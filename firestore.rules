@@ -1,0 +1,38 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // ทุกคนที่ล็อกอินแล้ว (พนักงานในบริษัท) อ่าน/เขียนได้
+    // เพราะเป็นระบบภายในองค์กร 10 คน ไม่ได้เปิดสาธารณะ
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    match /settings/{doc} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
+    }
+
+    match /projects/{doc} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /tasks/{doc} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /dailyUpdates/{doc} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && request.resource.data.uid == request.auth.uid;
+    }
+
+    match /customers/{doc} {
+      allow read, write: if isSignedIn();
+    }
+  }
+}

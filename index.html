@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ASG Work</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --purple:#8989eb;--purple-light:#e8e7fc;--purple-dark:#5a5ab8;
+  --orange:#f46524;--green:#11734b;--green-light:#d4edbc;
+  --red:#c0392b;--red-light:#fde8e8;--blue-light:#bfe1f6;--blue-dark:#0a53a8;
+  --gray:#f5f5f5;--gray2:#e0e0e0;--gray3:#888;
+  --font:'Segoe UI',Arial,sans-serif;
+}
+body{font-family:var(--font);background:#f0f0f8;color:#1f1f1f;font-size:14px}
+.screen{display:none}
+.active-screen{display:block}
+#loginScreen{min-height:100vh;display:flex;align-items:center;justify-content:center}
+.login-box{background:#fff;border-radius:16px;padding:36px;width:min(360px,90vw);box-shadow:0 8px 32px rgba(0,0,0,.12)}
+.login-box h1{color:var(--purple);font-size:20px;margin-bottom:20px;text-align:center}
+.login-box input{width:100%;padding:10px 12px;border:1px solid var(--gray2);border-radius:8px;margin-bottom:12px;font-size:14px}
+.login-box button{width:100%;padding:10px;border:none;border-radius:8px;background:var(--purple);color:#fff;font-weight:600;cursor:pointer}
+.err{color:var(--red);font-size:12px;margin-bottom:8px;min-height:16px}
+nav{background:var(--purple);color:#fff;display:flex;align-items:center;padding:0 16px;height:54px;gap:6px;position:sticky;top:0;z-index:100;flex-wrap:wrap}
+.logo{font-weight:700;letter-spacing:1px;margin-right:10px}
+.nav-btn{background:rgba(255,255,255,.15);border:none;color:#fff;padding:6px 12px;border-radius:20px;cursor:pointer;font-size:12px;font-weight:600}
+.nav-btn.active{background:#fff;color:var(--purple)}
+.spacer{flex:1}
+.bell{position:relative;background:rgba(255,255,255,.15);border:none;color:#fff;padding:6px 12px;border-radius:20px;cursor:pointer;font-size:16px}
+#notifCount{position:absolute;top:-4px;right:-4px;background:var(--red);color:#fff;font-size:10px;border-radius:10px;padding:1px 5px;display:none}
+#notifBanner{display:none;position:absolute;right:16px;top:56px;background:#fff;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.15);width:280px;max-height:300px;overflow-y:auto;z-index:200}
+#notifBanner.open{display:block}
+.notif-item{padding:10px 14px;border-bottom:1px solid #f0f0f0;font-size:13px}
+.page{display:none;padding:20px;max-width:900px;margin:0 auto}
+.page.active{display:block}
+.card{background:#fff;border-radius:12px;padding:16px;box-shadow:0 1px 4px rgba(0,0,0,.08);margin-bottom:10px}
+.form-inline{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;background:#fff;padding:14px;border-radius:12px}
+.form-inline input,.form-inline select,.form-inline textarea{padding:8px 10px;border:1px solid var(--gray2);border-radius:8px;font-size:13px;font-family:var(--font)}
+.form-inline button{padding:8px 16px;border:none;border-radius:8px;background:var(--purple);color:#fff;font-weight:600;cursor:pointer}
+.badge{display:inline-block;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:600}
+.badge.done{background:var(--green-light);color:var(--green)}
+.badge.inprog{background:var(--blue-light);color:var(--blue-dark)}
+.badge.notyet{background:var(--red-light);color:var(--red)}
+.ts{font-size:12px;color:var(--gray3);margin-top:2px}
+.muted{color:var(--gray3);padding:10px 0}
+h2.sec{color:var(--purple);font-size:16px;margin-bottom:12px}
+#adminPanel{margin-top:20px;padding-top:16px;border-top:1px solid var(--gray2)}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="loginScreen" class="screen active-screen">
+  <div class="login-box">
+    <h1>ASG Work</h1>
+    <form id="loginForm">
+      <div class="err" id="loginError"></div>
+      <input type="email" id="loginEmail" placeholder="อีเมล" required>
+      <input type="password" id="loginPassword" placeholder="รหัสผ่าน" required>
+      <button type="submit">เข้าสู่ระบบ</button>
+    </form>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="appScreen" class="screen">
+<nav>
+  <span class="logo">ASG WORK</span>
+  <button class="nav-btn active" data-page="dashboard" onclick="showPage('dashboard')">Dashboard</button>
+  <button class="nav-btn" data-page="projects" onclick="showPage('projects')">โปรเจกต์</button>
+  <button class="nav-btn" data-page="updates" onclick="showPage('updates')">อัปเดตรายวัน</button>
+  <button class="nav-btn" data-page="customers" onclick="showPage('customers')">ลูกค้า/สัญญา</button>
+  <button class="nav-btn" data-page="settings" onclick="showPage('settings')">ตั้งค่า</button>
+  <div class="spacer"></div>
+  <button class="bell" id="bellBtn">🔔<span id="notifCount">0</span></button>
+  <span id="meLabel" style="font-size:12px"></span>
+  <button class="nav-btn" id="logoutBtn">ออกจากระบบ</button>
+</nav>
+<div id="notifBanner"></div>
+
+<div class="page active" id="page-dashboard">
+  <h2 class="sec">ภาพรวม</h2>
+  <p class="muted">แดชบอร์ดสรุปผลงาน — ต่อยอดกราฟ/สถิติเพิ่มได้ภายหลังจากข้อมูลใน projects, tasks, customers</p>
+</div>
+
+<div class="page" id="page-projects">
+  <h2 class="sec">โปรเจกต์</h2>
+  <form class="form-inline" id="projectForm">
+    <input id="projName" placeholder="ชื่อโปรเจกต์" required>
+    <input id="projStart" type="date" required>
+    <input id="projDue" type="date" required>
+    <button type="submit">+ เพิ่มโปรเจกต์</button>
+  </form>
+  <div id="projectList"></div>
+
+  <h2 class="sec" style="margin-top:24px">งานย่อย</h2>
+  <form class="form-inline" id="taskForm">
+    <select id="taskProject" required></select>
+    <input id="taskTitle" placeholder="ชื่องาน" required>
+    <select id="taskAssignee" class="assigneeSelect" required></select>
+    <input id="taskDue" type="date" required>
+    <button type="submit">+ เพิ่มงาน</button>
+  </form>
+  <div id="taskList"></div>
+</div>
+
+<div class="page" id="page-updates">
+  <h2 class="sec">อัปเดตงานวันนี้</h2>
+  <form class="form-inline" id="updateForm">
+    <textarea id="updateText" placeholder="วันนี้ทำอะไรไปบ้าง..." style="flex:1;min-width:200px" required></textarea>
+    <button type="submit">บันทึก</button>
+  </form>
+  <div id="updateList"></div>
+</div>
+
+<div class="page" id="page-customers">
+  <h2 class="sec">ลูกค้า & สัญญา</h2>
+  <form class="form-inline" id="customerForm">
+    <input id="custName" placeholder="ชื่อลูกค้า" required>
+    <input id="custEndDate" type="date" required>
+    <input id="custReminderDays" type="number" placeholder="แจ้งเตือนล่วงหน้า (วัน) เช่น 15" value="15">
+    <input id="custNote" placeholder="โน้ต (ถ้ามี)">
+    <button type="submit">+ เพิ่มลูกค้า</button>
+  </form>
+  <div id="customerList"></div>
+</div>
+
+<div class="page" id="page-settings">
+  <h2 class="sec">ตั้งค่า</h2>
+  <div class="card">
+    <label style="font-weight:600;font-size:13px">การมองเห็นงานของคนอื่น</label><br>
+    <select id="visibilitySelect" style="margin-top:8px;padding:8px;border-radius:8px;border:1px solid var(--gray2)">
+      <option value="private">ส่วนตัวล้วน (เห็นแค่งานตัวเอง ยกเว้นหัวหน้า)</option>
+      <option value="adminOnly">หัวหน้าเห็นทุกคน (ค่าเริ่มต้น)</option>
+      <option value="public">เปิดให้ทุกคนเห็นกันหมด</option>
+    </select>
+    <p class="ts">ตั้งค่านี้เปลี่ยนได้เฉพาะหัวหน้า</p>
+  </div>
+  <div id="adminPanel" style="display:none">
+    <h2 class="sec">จัดการผู้ใช้ (หัวหน้าเท่านั้น)</h2>
+    <form class="form-inline" id="addUserForm">
+      <input id="newUserName" placeholder="ชื่อพนักงาน" required>
+      <input id="newUserEmail" type="email" placeholder="อีเมล" required>
+      <input id="newUserPassword" type="password" placeholder="รหัสผ่านเริ่มต้น" required>
+      <button type="submit">+ สร้างบัญชี</button>
+    </form>
+    <div class="err" id="addUserError"></div>
+    <p class="ts">หมายเหตุ: การสร้างบัญชีใหม่จะสลับให้ระบบล็อกอินเป็นบัญชีนั้นชั่วคราว ให้ล็อกอินกลับเป็นบัญชีหัวหน้าอีกครั้งหลังสร้างเสร็จ (ข้อจำกัดของ Firebase ฝั่ง client — ทำครั้งเดียวตอนตั้งทีม 10 คนแรกก็พอ)</p>
+  </div>
+</div>
+
+</div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
