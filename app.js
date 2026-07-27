@@ -9,7 +9,7 @@ import {
   getDocs, getDoc, query, where, orderBy, onSnapshot, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
-// Initialize Firebase Instances Safely (Prevents duplicate app named crash during updates)
+// Initialize Firebase Instances Safely
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 const db = getFirestore(app);
 const auth = getAuth(app);
@@ -21,7 +21,8 @@ const secondaryAuth = getAuth(secondaryApp);
 // Global States
 let currentUser = null;   // Firebase auth user
 let profile = null;       // { name, role, uid }
-let settings = { visibilityMode: 'adminOnly' }; // 'private' | 'adminOnly' | 'public'
+let settings = { visibilityMode: 'adminOnly' }; 
+let dashboardChartInstance = null;
 
 // Cache arrays
 let usersCache = [];
@@ -33,18 +34,19 @@ let categoriesCache = [];
 let assignersCache = [];
 let quotationsCache = [];
 
-// Editing IDs (Declared at module scope to prevent ReferenceErrors)
+// Editing IDs (Declared at module scope)
 let editingProjectId = null;
 let editingTaskId = null;
 let editingCustomerId = null;
 let editingUpdateId = null;
+let editingQuotationId = null;
 
 // Modal States
 let activeDetailsTaskId = null;
 let currentTaskImageData = null; // Base64 compressed image
 let currentCalendarDate = new Date();
 
-// ---------- SYSTEM INTIALIZATION & THEME ----------
+// ---------- SYSTEM INITIALIZATION & THEME ----------
 
 document.addEventListener('DOMContentLoaded', () => {
   loadAppTheme();
@@ -138,7 +140,6 @@ async function loadProfile(uid, email) {
   if (snap.exists()) {
     profile = { uid, ...snap.data() };
   } else {
-    // First sign in default fallback
     const newProfile = { name: email.split('@')[0], email, role: 'staff', createdAt: serverTimestamp() };
     await setDoc(ref, newProfile);
     profile = { uid, ...newProfile };
@@ -154,7 +155,7 @@ async function loadSettings() {
   document.getElementById('visibilitySelect').value = settings.visibilityMode;
   document.getElementById('adminPanel').style.display = profile.role === 'admin' ? 'block' : 'none';
   
-  // Load dynamic Categories from /settings/categories
+  // Load dynamic Categories
   const catSnap = await getDoc(doc(db, 'settings', 'categories'));
   if (catSnap.exists()) {
     categoriesCache = catSnap.data().list || [];
@@ -163,7 +164,7 @@ async function loadSettings() {
     await setDoc(doc(db, 'settings', 'categories'), { list: categoriesCache });
   }
   
-  // Load dynamic Assigners from /settings/assigners
+  // Load dynamic Assigners
   const assSnap = await getDoc(doc(db, 'settings', 'assigners'));
   if (assSnap.exists()) {
     assignersCache = assSnap.data().list || [];
@@ -180,7 +181,7 @@ async function loadUsers() {
   const snap = await getDocs(collection(db, 'users'));
   usersCache = snap.docs.map(d => ({ uid: d.id, ...d.data() }));
   
-  // Populate filter dropdowns
+  // Populate filter dropdown
   const filterAssignee = document.getElementById('filterAssignee');
   const selectedAssignee = filterAssignee.value;
   filterAssignee.innerHTML = '<option value="">ทุกคนในทีม</option>' + 
@@ -216,10 +217,8 @@ window.showPage = function (page) {
   const targetBtn = document.querySelector(`.nav-btn[data-page="${page}"]`);
   if (targetBtn) targetBtn.classList.add('active');
   
-  // Close popups
   document.getElementById('notifBanner').classList.remove('open');
   
-  // Specific triggers
   if (page === 'calendar') {
     renderCalendar();
   }
@@ -245,19 +244,19 @@ function renderSettingsTags() {
   const catBox = document.getElementById('settingsCategoriesList');
   if (catBox) {
     catBox.innerHTML = categoriesCache.map((c, idx) => `
-      <div class="tag-item">
+      <div class="tag-item" style="display:inline-flex; align-items:center; background:#e2e8f0; padding:4px 10px; border-radius:15px; margin:4px; font-size:12.5px;">
         <span>${c}</span>
-        <span class="del" onclick="deleteCategoryTag(${idx})">&times;</span>
+        <span class="del" onclick="deleteCategoryTag(${idx})" style="color:#ef4444; margin-left:6px; cursor:pointer; font-weight:bold;">&times;</span>
       </div>
-    `).join('') || '<p class="muted" style="font-size:12px">ไม่มีหมวดหมู่นี้</p>';
+    `).join('') || '<p class="muted" style="font-size:12px">ไม่มีหมวดหมู่งาน</p>';
   }
   
   const assBox = document.getElementById('settingsAssignersList');
   if (assBox) {
     assBox.innerHTML = assignersCache.map((a, idx) => `
-      <div class="tag-item">
+      <div class="tag-item" style="display:inline-flex; align-items:center; background:#e2e8f0; padding:4px 10px; border-radius:15px; margin:4px; font-size:12.5px;">
         <span>${a}</span>
-        <span class="del" onclick="deleteAssignerTag(${idx})">&times;</span>
+        <span class="del" onclick="deleteAssignerTag(${idx})" style="color:#ef4444; margin-left:6px; cursor:pointer; font-weight:bold;">&times;</span>
       </div>
     `).join('') || '<p class="muted" style="font-size:12px">ไม่มีผู้สั่งงาน</p>';
   }
@@ -309,7 +308,7 @@ window.deleteAssignerTag = async (idx) => {
   renderSettingsTags();
 };
 
-// ---------- PROJECTS CRUD ----------
+// ---------- PROJECTS CRUD & GROUPED SUBTASKS RENDERING ----------
 
 document.getElementById('projectForm').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -366,6 +365,89 @@ window.deleteProject = async (id) => {
   }
 };
 
+window.openAddTaskModalForProject = function(projId) {
+  openAddTaskModal();
+  document.getElementById('taskProjectSelect').value = projId;
+};
+
+function renderProjects(projects) {
+  const box = document.getElementById('projectList');
+  if (projects.length === 0) {
+    box.innerHTML = '<p class="muted">ยังไม่มีโปรเจกต์</p>';
+    return;
+  }
+  
+  box.innerHTML = projects.map(p => {
+    const cust = customersCache.find(x => x.id === p.customerId);
+    const custLabel = cust ? `ลูกค้า: ${cust.name}` : '';
+    
+    // Fetch all subtasks belonging to this project
+    const projTasks = tasksCache.filter(t => t.projectId === p.id);
+    let pct = 0;
+    if (projTasks.length > 0) {
+      const completed = projTasks.filter(t => t.status === 'done').length;
+      pct = Math.round((completed / projTasks.length) * 100);
+    }
+    
+    // Grouped tasks list HTML inside the project card
+    const tasksHtml = projTasks.map(t => {
+      // Handle multi-assignees mapping
+      const assignedUsers = t.assignees 
+        ? t.assignees.map(uid => usersCache.find(x => x.uid === uid)).filter(Boolean)
+        : (t.assignee ? [usersCache.find(x => x.uid === t.assignee)].filter(Boolean) : []);
+      const namesLabel = assignedUsers.map(u => u.name).join(', ') || '-';
+      
+      return `
+        <div style="display:flex; justify-content:space-between; align-items:center; font-size:12.5px; padding:6px 0; border-bottom:1px dashed var(--border-color)">
+          <span style="cursor:pointer; font-weight:600; text-decoration: underline;" onclick="openTaskDetailsModal('${t.id}')">${t.title}</span>
+          <div style="display:flex; gap:6px; align-items:center;">
+            <span class="ts" style="margin:0; font-size:11px;">(${namesLabel})</span>
+            <span class="badge ${t.status}" style="font-size:9px; padding:1px 4px">${t.status}</span>
+          </div>
+        </div>
+      `;
+    }).join('') || '<p class="muted" style="font-size:11.5px; padding:4px 0;">ยังไม่มีงานย่อยในโปรเจกต์นี้</p>';
+    
+    const canModifyProject = profile.role === 'admin' || p.createdBy === profile.uid;
+    
+    return `
+      <div class="card project-card" style="display:flex; flex-direction:column; gap:8px;">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start">
+          <strong style="font-size:15px">${p.name}</strong>
+          <span class="badge ${p.status}">${p.status}</span>
+        </div>
+        <div style="font-size:12px; color:var(--text-muted)">
+          ${custLabel ? `<div>${custLabel}</div>` : ''}
+          เริ่ม ${p.startDate || '-'} · กำหนดเสร็จ ${p.dueDate || '-'}
+        </div>
+        
+        <div class="progress-container">
+          <div class="progress-bar-bg">
+            <div class="progress-bar-fill" style="width: ${pct}%"></div>
+          </div>
+          <span class="progress-pct">${pct}%</span>
+        </div>
+        
+        <!-- Nested Tasks Area -->
+        <div style="border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; background: #fafafa; margin-top: 8px;">
+          <strong style="font-size:12px; color:var(--text-dark); display:block; margin-bottom:6px;"><i class="fa-solid fa-list-check"></i> รายการงานในโปรเจกต์:</strong>
+          <div style="max-height:120px; overflow-y:auto; padding-right:4px;">
+            ${tasksHtml}
+          </div>
+        </div>
+        
+        <div class="card-actions" style="margin-top:auto; padding-top:6px; display:flex; gap:6px;">
+          <button class="icon-btn edit" onclick="openAddTaskModalForProject('${p.id}')"><i class="fa-solid fa-plus"></i> มอบหมายงาน</button>
+          ${canModifyProject ? `
+            <button class="icon-btn edit" onclick="editProject('${p.id}')"><i class="fa-solid fa-pen-to-square"></i> แก้ไข</button>
+            <button class="icon-btn del" onclick="deleteProject('${p.id}')"><i class="fa-solid fa-trash"></i> ลบ</button>
+          ` : ''}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
 // ---------- CLIENT-SIDE IMAGE COMPRESSION (CANVAS) ----------
 
 window.handleTaskImageUpload = function(event) {
@@ -398,7 +480,6 @@ window.handleTaskImageUpload = function(event) {
       const ctx = canvas.getContext('2d');
       ctx.drawImage(img, 0, 0, width, height);
       
-      // Compress to 70% quality JPEG
       currentTaskImageData = canvas.toDataURL('image/jpeg', 0.7);
       
       const previewBox = document.getElementById('taskImagePreview');
@@ -433,14 +514,22 @@ window.openAddTaskModal = function(taskId = null) {
   projSelect.innerHTML = '<option value="">-- เลือกโครงการ --</option>' + 
     projectsCache.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
     
-  const assigneeSelect = document.getElementById('taskAssigneeSelect');
-  assigneeSelect.innerHTML = '<option value="">-- เลือกคนในทีม --</option>' + 
-    usersCache.map(u => `<option value="${u.uid}">${u.name}</option>`).join('');
+  // Populate related quotations
+  const qtSelect = document.getElementById('taskQuotationSelect');
+  qtSelect.innerHTML = '<option value="">-- เลือกใบเสนอราคา (ถ้ามี) --</option>' +
+    quotationsCache.map(q => `<option value="${q.id}">${q.code} · ฿${formatMoney(q.total)}</option>`).join('');
     
+  // Render multi-assignee checkboxes
+  const checkboxesContainer = document.getElementById('taskAssigneesCheckboxes');
+  checkboxesContainer.innerHTML = usersCache.map(u => `
+    <label style="display:inline-flex; align-items:center; gap:8px; font-weight:normal; cursor:pointer; margin-bottom: 2px;">
+      <input type="checkbox" class="task-assignee-checkbox" value="${u.uid}" style="width:16px; height:16px; accent-color:var(--primary-red);"> ${u.name}
+    </label>
+  `).join('');
+  
   populateTagsDropdowns();
 
   if (taskId) {
-    // Edit Mode
     const t = tasksCache.find(x => x.id === taskId);
     if (!t) return;
     editingTaskId = taskId;
@@ -448,19 +537,23 @@ window.openAddTaskModal = function(taskId = null) {
     document.getElementById('taskTitleInput').value = t.title || '';
     document.getElementById('taskDescInput').value = t.description || '';
     document.getElementById('taskProjectSelect').value = t.projectId || '';
-    document.getElementById('taskAssigneeSelect').value = t.assignee || '';
     document.getElementById('taskCategorySelect').value = t.category || '';
     document.getElementById('taskAssignerSelect').value = t.assigner || '';
     document.getElementById('taskPrioritySelect').value = t.priority || 'mid';
     document.getElementById('taskDueInput').value = t.dueDate || '';
+    document.getElementById('taskQuotationSelect').value = t.quotationId || '';
     document.getElementById('taskSubmitBtnText').innerHTML = '<i class="fa-solid fa-check"></i> บันทึกการแก้ไข';
     
-    // Add links inputs
+    // Check checkboxes
+    const selectedAssignees = t.assignees || (t.assignee ? [t.assignee] : []);
+    checkboxesContainer.querySelectorAll('.task-assignee-checkbox').forEach(cb => {
+      cb.checked = selectedAssignees.includes(cb.value);
+    });
+    
     if (t.links && t.links.length) {
       t.links.forEach(l => addModalLinkInput(l.url, l.label));
     }
     
-    // Preview image
     if (t.imageData) {
       currentTaskImageData = t.imageData;
       const previewBox = document.getElementById('taskImagePreview');
@@ -472,7 +565,6 @@ window.openAddTaskModal = function(taskId = null) {
       `;
     }
   } else {
-    // Add Mode
     editingTaskId = null;
     document.getElementById('modalTaskTitle').textContent = 'มอบหมายงานใหม่';
     document.getElementById('taskFormSubmit').reset();
@@ -492,7 +584,7 @@ window.addModalLinkInput = function(urlText = "", labelText = "") {
   const div = document.createElement('div');
   div.className = 'link-input-row';
   div.innerHTML = `
-    <input type="text" placeholder="ป้ายกำกับลิงก์ เช่น Google Drive" value="${labelText}" class="link-label-input" style="width:30%">
+    <input type="text" placeholder="ป้ายกำกับ เช่น Google Drive" value="${labelText}" class="link-label-input" style="width:30%">
     <input type="url" placeholder="https://example.com" value="${urlText}" class="link-url-input">
     <button type="button" class="icon-btn del" onclick="this.parentElement.remove()"><i class="fa-solid fa-trash"></i></button>
   `;
@@ -515,15 +607,29 @@ function getModalLinks() {
 
 document.getElementById('taskFormSubmit').addEventListener('submit', async (e) => {
   e.preventDefault();
+  
+  // Get checked assignees
+  const assignees = [];
+  document.getElementById('taskAssigneesCheckboxes').querySelectorAll('.task-assignee-checkbox:checked').forEach(cb => {
+    assignees.push(cb.value);
+  });
+  
+  if (assignees.length === 0) {
+    alert('กรุณาเลือกผู้รับผิดชอบอย่างน้อย 1 คน');
+    return;
+  }
+  
   const data = {
     title: document.getElementById('taskTitleInput').value.trim(),
     description: document.getElementById('taskDescInput').value.trim(),
     projectId: document.getElementById('taskProjectSelect').value,
-    assignee: document.getElementById('taskAssigneeSelect').value,
+    assignees: assignees,
+    assignee: assignees[0], // fallback compatibility for legacy scripts
     category: document.getElementById('taskCategorySelect').value,
     assigner: document.getElementById('taskAssignerSelect').value,
     priority: document.getElementById('taskPrioritySelect').value,
     dueDate: document.getElementById('taskDueInput').value,
+    quotationId: document.getElementById('taskQuotationSelect').value,
     links: getModalLinks(),
     imageData: currentTaskImageData,
     updatedAt: serverTimestamp()
@@ -560,7 +666,7 @@ window.deleteTask = async (id) => {
   }
 };
 
-// ---------- INTERACTIVE TASK DETAILS MODAL (Timeline, comments, subtasks) ----------
+// ---------- INTERACTIVE TASK DETAILS MODAL ----------
 
 window.openTaskDetailsModal = function(taskId) {
   activeDetailsTaskId = taskId;
@@ -579,26 +685,40 @@ window.closeTaskDetailsModal = function() {
 function renderTaskDetailsModalContent(t) {
   document.getElementById('detTaskTitle').textContent = t.title || '';
   
-  // Priority Badge
   const pBadge = document.getElementById('detTaskPriorityBadge');
   pBadge.className = 'badge ' + (t.priority || 'mid');
   const prioLabels = { urgent: 'ด่วนที่สุด', high: 'สูง', mid: 'กลาง', low: 'ต่ำ' };
   pBadge.textContent = prioLabels[t.priority || 'mid'];
   
-  // Meta mappings
   const proj = projectsCache.find(x => x.id === t.projectId);
   document.getElementById('detTaskProject').textContent = proj ? proj.name : '-';
   
-  const user = usersCache.find(x => x.uid === t.assignee);
-  document.getElementById('detTaskAssignee').textContent = user ? user.name : '-';
+  // Render multi-assignee names list
+  const assignedUsers = t.assignees 
+    ? t.assignees.map(uid => usersCache.find(x => x.uid === uid)).filter(Boolean)
+    : (t.assignee ? [usersCache.find(x => x.uid === t.assignee)].filter(Boolean) : []);
+  const assigneesNames = assignedUsers.map(u => u.name).join(', ') || '-';
+  document.getElementById('detTaskAssignee').textContent = assigneesNames;
+  
   document.getElementById('detTaskDue').textContent = t.dueDate || '-';
   document.getElementById('detTaskCategory').textContent = t.category || '-';
   document.getElementById('detTaskAssigner').textContent = t.assigner || '-';
   
-  // Status select dropdown
+  // Related quotation link render
+  const qtBox = document.getElementById('detTaskQuotation');
+  if (t.quotationId) {
+    const q = quotationsCache.find(x => x.id === t.quotationId);
+    if (q) {
+      qtBox.innerHTML = `<span style="color:var(--primary-red); cursor:pointer; font-weight:700; text-decoration:underline;" onclick="printQuotationDocument('${q.id}')">${q.code} (คลิกดู A4)</span>`;
+    } else {
+      qtBox.textContent = 'ไม่พบเอกสาร';
+    }
+  } else {
+    qtBox.textContent = '-';
+  }
+  
   document.getElementById('detTaskStatusSelect').value = t.status || 'notyet';
   
-  // Description
   const descBox = document.getElementById('detTaskDesc');
   if (t.description) {
     descBox.textContent = t.description;
@@ -607,11 +727,9 @@ function renderTaskDetailsModalContent(t) {
     descBox.textContent = 'ไม่มีรายละเอียดเพิ่มเติม';
   }
   
-  // Render Subtasks & updates
   renderSubtasksList(t.subtasks || []);
   renderUpdatesTimeline(t.updates || []);
   
-  // Image & Links panel
   const mediaRow = document.getElementById('detTaskMediaRow');
   const imgBox = document.getElementById('detTaskImageContainer');
   const linksBox = document.getElementById('detTaskLinksContainer');
@@ -641,7 +759,6 @@ function renderTaskDetailsModalContent(t) {
     mediaRow.style.display = 'none';
   }
   
-  // Render comments
   renderCommentsList(t.comments || []);
 }
 
@@ -770,10 +887,9 @@ window.addTaskProgressUpdateClick = async () => {
     createdAt: now.toISOString()
   });
   
-  // 1. Update task timeline updates
   await updateDoc(doc(db, 'tasks', activeDetailsTaskId), { updates });
   
-  // 2. Auto publish to global dailyUpdates standup feed
+  // Auto publish to standup updates
   await addDoc(collection(db, 'dailyUpdates'), {
     uid: profile.uid,
     date: now.toISOString().slice(0, 10),
@@ -784,28 +900,62 @@ window.addTaskProgressUpdateClick = async () => {
   input.value = '';
 };
 
-// ---------- LINE SHARE NOTIFICATION ----------
+// ---------- LINE SHARE & CLIPBOARD FUNCTIONS ----------
+
+function formatTaskShareMessage(t) {
+  const assignedUsers = t.assignees 
+    ? t.assignees.map(uid => usersCache.find(x => x.uid === uid)).filter(Boolean)
+    : (t.assignee ? [usersCache.find(x => x.uid === t.assignee)].filter(Boolean) : []);
+  const namesLabel = assignedUsers.map(u => u.name).join(', ') || '-';
+  const proj = projectsCache.find(x => x.id === t.projectId);
+  const prioLabels = { urgent: '🔴 ด่วนที่สุด', high: '🟠 สูง', mid: '🟡 กลาง', low: '🟢 ต่ำ' };
+  
+  return `📢 แจ้งเตือนงาน: ASG WORK\n` +
+         `📌 ชื่องาน: ${t.title}\n` +
+         `📂 โครงการ: ${proj ? proj.name : '-'}\n` +
+         `👤 ผู้รับผิดชอบ: ${namesLabel}\n` +
+         `⚡ ระดับความสำคัญ: ${prioLabels[t.priority || 'mid']}\n` +
+         `📅 กำหนดส่ง: ${t.dueDate || '-'}\n` +
+         `📝 รายละเอียด: ${t.description || 'ไม่มี'}\n` +
+         `🔗 ลิงก์ระบบ: https://manybear.github.io/asg-work/`;
+}
 
 window.sendTaskToLineShare = function() {
   if (!activeDetailsTaskId) return;
   const t = tasksCache.find(x => x.id === activeDetailsTaskId);
   if (!t) return;
   
-  const user = usersCache.find(x => x.uid === t.assignee);
-  const proj = projectsCache.find(x => x.id === t.projectId);
-  const prioLabels = { urgent: '🔴 ด่วนที่สุด', high: '🟠 สูง', mid: '🟡 กลาง', low: '🟢 ต่ำ' };
-  
-  const msg = `📢 แจ้งเตือนงาน: ASG WORK\n` +
-              `📌 ชื่องาน: ${t.title}\n` +
-              `📂 โครงการ: ${proj ? proj.name : '-'}\n` +
-              `👤 ผู้รับผิดชอบ: ${user ? user.name : '-'}\n` +
-              `⚡ ระดับความสำคัญ: ${prioLabels[t.priority || 'mid']}\n` +
-              `📅 กำหนดส่ง: ${t.dueDate || '-'}\n` +
-              `📝 รายละเอียด: ${t.description || 'ไม่มี'}\n` +
-              `🔗 ลิงก์ระบบ: https://manybear.github.io/asg-work/`;
-              
+  const msg = formatTaskShareMessage(t);
   const lineUrl = `https://line.me/R/msg/text/?${encodeURIComponent(msg)}`;
   window.open(lineUrl, '_blank');
+};
+
+window.copyTaskLineShareLink = function() {
+  if (!activeDetailsTaskId) return;
+  const t = tasksCache.find(x => x.id === activeDetailsTaskId);
+  if (!t) return;
+  
+  const msg = formatTaskShareMessage(t);
+  const lineUrl = `https://line.me/R/msg/text/?${encodeURIComponent(msg)}`;
+  
+  navigator.clipboard.writeText(lineUrl).then(() => {
+    alert('คัดลอกลิงก์แชร์ LINE สำเร็จ! สามารถนำลิงก์นี้ส่งต่อได้ทันที');
+  }).catch(err => {
+    alert('ไม่สามารถคัดลอกได้: ' + err.message);
+  });
+};
+
+window.copyTaskInfoText = function() {
+  if (!activeDetailsTaskId) return;
+  const t = tasksCache.find(x => x.id === activeDetailsTaskId);
+  if (!t) return;
+  
+  const msg = formatTaskShareMessage(t);
+  navigator.clipboard.writeText(msg).then(() => {
+    alert('คัดลอกข้อความสรุปรายละเอียดงานสำเร็จ! นำไปวางส่งในแชทได้ทันที');
+  }).catch(err => {
+    alert('ไม่สามารถคัดลอกได้: ' + err.message);
+  });
 };
 
 // ---------- COMMENTS REAL-TIME CHAT ----------
@@ -877,7 +1027,7 @@ window.onModalStatusChange = async (val) => {
   await updateDoc(doc(db, 'tasks', activeDetailsTaskId), updates);
 };
 
-// ---------- CALENDAR LOGIC (Monthly vanilla grid calculator) ----------
+// ---------- CALENDAR LOGIC ----------
 
 window.changeMonth = function(dir) {
   currentCalendarDate.setMonth(currentCalendarDate.getMonth() + dir);
@@ -900,10 +1050,9 @@ function renderCalendar() {
   
   grid.innerHTML = '';
   
-  const firstDayIndex = new Date(year, month, 1).getDay(); // 0 = Sun, 6 = Sat
+  const firstDayIndex = new Date(year, month, 1).getDay();
   const totalDays = new Date(year, month + 1, 0).getDate();
   
-  // Empty grids for leading slots
   for (let i = 0; i < firstDayIndex; i++) {
     const emptyCell = document.createElement('div');
     emptyCell.className = 'calendar-day empty-day';
@@ -924,7 +1073,6 @@ function renderCalendar() {
     numSpan.textContent = day;
     cell.appendChild(numSpan);
     
-    // Match due dates
     const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     const dayTasks = tasksCache.filter(t => t.dueDate === dateStr);
     
@@ -950,8 +1098,11 @@ document.getElementById('customerForm').addEventListener('submit', async (e) => 
   e.preventDefault();
   const data = {
     name: document.getElementById('custName').value.trim(),
+    taxId: document.getElementById('custTaxId').value.trim(),
+    phone: document.getElementById('custPhone').value.trim(),
     contractEndDate: document.getElementById('custEndDate').value,
     reminderDays: parseInt(document.getElementById('custReminderDays').value || '15', 10),
+    address: document.getElementById('custAddress').value.trim(),
     note: document.getElementById('custNote').value.trim()
   };
   
@@ -973,8 +1124,11 @@ window.editCustomer = (id) => {
   if (!c) return;
   editingCustomerId = id;
   document.getElementById('custName').value = c.name || '';
+  document.getElementById('custTaxId').value = c.taxId || '';
+  document.getElementById('custPhone').value = c.phone || '';
   document.getElementById('custEndDate').value = c.contractEndDate || '';
   document.getElementById('custReminderDays').value = c.reminderDays || 15;
+  document.getElementById('custAddress').value = c.address || '';
   document.getElementById('custNote').value = c.note || '';
   document.getElementById('custSubmitBtn').innerHTML = '<i class="fa-solid fa-check"></i> บันทึกการแก้ไข';
   document.getElementById('custCancelBtn').style.display = 'inline-block';
@@ -999,18 +1153,52 @@ window.deleteCustomer = async (id) => {
   }
 };
 
-// ---------- QUOTATIONS BILLING ENGINE (Mapped to /settings/qt_{id} for direct rules bypass) ----------
+function renderCustomers(customers) {
+  const box = document.getElementById('customerList');
+  if (customers.length === 0) {
+    box.innerHTML = '<p class="muted">ยังไม่มีข้อมูลลูกค้า</p>';
+    return;
+  }
+  
+  box.innerHTML = customers.map(c => {
+    const days = daysUntil(c.contractEndDate);
+    const daysLabel = days < 0 ? `หมดอายุแล้ว ${Math.abs(days)} วัน` : (days === 0 ? 'หมดอายุวันนี้!' : `เหลือเวลาอีก ${days} วัน`);
+    const dateClass = days <= 30 ? 'badge urgent' : 'badge done';
+    
+    return `
+      <div class="card" id="customer-card-${c.id}" style="display:flex; flex-direction:column; gap:4px; transition: all 0.2s;">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start">
+          <strong style="font-size:15px; color:var(--text-dark);"><i class="fa-regular fa-building"></i> ${c.name}</strong>
+          <span class="${dateClass}">${daysLabel}</span>
+        </div>
+        <div class="ts"><i class="fa-regular fa-calendar-check"></i> ครบกำหนดสัญญา: ${c.contractEndDate || '-'}</div>
+        <div style="font-size:12.5px; color:var(--text-muted);">
+          ${c.taxId ? `<div><strong>Tax ID:</strong> ${c.taxId}</div>` : ''}
+          ${c.phone ? `<div><strong>ติดต่อ:</strong> ${c.phone}</div>` : ''}
+          ${c.address ? `<div style="white-space:pre-line; margin-top:2px;"><strong>ที่อยู่:</strong> ${c.address}</div>` : ''}
+        </div>
+        ${c.note ? `<div style="margin-top:6px; font-size:12.5px; color:var(--text-muted); background:#f8fafc; padding:8px; border-radius:6px; border:1px solid var(--border-color)">${c.note}</div>` : ''}
+        <div class="card-actions" style="margin-top:8px;">
+          <button class="icon-btn edit" onclick="editCustomer('${c.id}')"><i class="fa-solid fa-pen-to-square"></i> แก้ไข</button>
+          ${profile.role === 'admin' ? `<button class="icon-btn del" onclick="deleteCustomer('${c.id}')"><i class="fa-solid fa-trash"></i> ลบ</button>` : ''}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// ---------- QUOTATIONS BILLING ENGINE ----------
 
 window.openCreateQuotationForm = function() {
   document.getElementById('quotationForm').reset();
   document.getElementById('quotationItemsBody').innerHTML = '';
+  editingQuotationId = null;
+  document.getElementById('quotationFormTitle').textContent = 'ออกใบเสนอราคา';
   
-  // Autofill code and date
   const now = new Date();
   document.getElementById('qtDate').value = now.toISOString().slice(0, 10);
   document.getElementById('qtCode').value = 'QT-' + now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + String(now.getDate()).padStart(2, '0') + '-' + String(Date.now()).slice(-3);
   
-  // Populate customers
   const custSel = document.getElementById('qtCustomer');
   custSel.innerHTML = '<option value="">-- เลือกบริษัทลูกค้า --</option>' + 
     customersCache.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
@@ -1022,6 +1210,16 @@ window.openCreateQuotationForm = function() {
 
 window.closeQuotationFormPanel = function() {
   document.getElementById('quotationFormPanel').style.display = 'none';
+  editingQuotationId = null;
+  document.getElementById('quotationFormTitle').textContent = 'ออกใบเสนอราคา';
+};
+
+window.onQuotationCustomerChange = function(custId) {
+  if (!custId) return;
+  const c = customersCache.find(x => x.id === custId);
+  if (c && c.address) {
+    // If the customer has a stored address, we can alert or log it, but let's prefill in the note if needed
+  }
 };
 
 window.addQuotationItemRow = function(desc = "", qty = 1, price = 0) {
@@ -1029,7 +1227,7 @@ window.addQuotationItemRow = function(desc = "", qty = 1, price = 0) {
   const tr = document.createElement('tr');
   tr.className = 'qt-item-row';
   tr.innerHTML = `
-    <td style="padding:6px;"><input type="text" class="qt-item-desc" placeholder="เช่น ค่าผลิตบริการวิดีโอ A4" value="${desc}" style="width:100%;" required></td>
+    <td style="padding:6px;"><input type="text" class="qt-item-desc" placeholder="เช่น ค่าจัดทำอาร์ตเวิร์กแผ่นพับ" value="${desc}" style="width:100%;" required></td>
     <td style="padding:6px; text-align:center;"><input type="number" class="qt-item-qty" value="${qty}" min="1" oninput="calculateQuotationTotals()" style="width:100%; text-align:center;" required></td>
     <td style="padding:6px; text-align:right;"><input type="number" class="qt-item-price" value="${price}" min="0" step="0.01" oninput="calculateQuotationTotals()" style="width:100%; text-align:right;" required></td>
     <td style="padding:6px; text-align:right; font-weight:600; font-size:13px;" class="qt-item-amount">฿0.00</td>
@@ -1087,7 +1285,7 @@ document.getElementById('quotationForm').addEventListener('submit', async (e) =>
   });
   
   if (items.length === 0) {
-    alert('กรุณาเพิ่มรายการเพื่อคิดเงินอย่างน้อย 1 แถว');
+    alert('กรุณาเพิ่มรายการสินค้าอย่างน้อย 1 รายการ');
     return;
   }
   
@@ -1095,8 +1293,7 @@ document.getElementById('quotationForm').addEventListener('submit', async (e) =>
   const vat = isVat ? subtotal * 0.07 : 0;
   const total = subtotal + vat;
   
-  // Mapped to /settings collection with qt_ prefix to bypass new Firestore rule setups
-  const id = 'qt_' + Date.now();
+  const id = editingQuotationId || ('qt_' + Date.now());
   const data = {
     type: 'quotation',
     code,
@@ -1110,17 +1307,52 @@ document.getElementById('quotationForm').addEventListener('submit', async (e) =>
     total,
     notes,
     createdBy: profile.uid,
-    createdAt: serverTimestamp()
+    createdAt: editingQuotationId 
+      ? (quotationsCache.find(x => x.id === editingQuotationId).createdAt || serverTimestamp()) 
+      : serverTimestamp()
   };
   
   try {
     await setDoc(doc(db, 'settings', id), data);
-    alert('บันทึกใบเสนอราคาเข้าระบบสำเร็จ');
+    alert(editingQuotationId ? 'แก้ไขใบเสนอราคาสำเร็จ' : 'บันทึกใบเสนอราคาสำเร็จ');
     closeQuotationFormPanel();
   } catch (err) {
     alert('เกิดข้อผิดพลาดในการบันทึกเอกสาร: ' + err.message);
   }
 });
+
+window.editQuotation = function(qId) {
+  const q = quotationsCache.find(x => x.id === qId);
+  if (!q) return;
+  
+  editingQuotationId = qId;
+  document.getElementById('quotationFormTitle').textContent = 'แก้ไขใบเสนอราคา';
+  document.getElementById('qtCode').value = q.code || '';
+  document.getElementById('qtDate').value = q.date || '';
+  
+  const custSel = document.getElementById('qtCustomer');
+  custSel.innerHTML = '<option value="">-- เลือกบริษัทลูกค้า --</option>' + 
+    customersCache.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+  custSel.value = q.customerId || '';
+  
+  document.getElementById('qtCompanyName').value = q.companyName || 'บริษัท แอดวานซ์ บิสซิเนส แมกกาซีน จำกัด';
+  document.getElementById('qtCompanyAddress').value = q.companyAddress || '';
+  document.getElementById('qtNotes').value = q.notes || '';
+  document.getElementById('qtVatCheckbox').checked = q.vat > 0;
+  
+  const tbody = document.getElementById('quotationItemsBody');
+  tbody.innerHTML = '';
+  if (q.items && q.items.length) {
+    q.items.forEach(it => {
+      addQuotationItemRow(it.desc, it.qty, it.price);
+    });
+  } else {
+    addQuotationItemRow("", 1, 0);
+  }
+  
+  document.getElementById('quotationFormPanel').style.display = 'block';
+  document.getElementById('quotationFormPanel').scrollIntoView({ behavior: 'smooth' });
+};
 
 function renderQuotations(quotations) {
   const box = document.getElementById('quotationList');
@@ -1144,6 +1376,7 @@ function renderQuotations(quotations) {
         </div>
         <div class="card-actions">
           <button class="icon-btn edit" onclick="printQuotationDocument('${q.id}')"><i class="fa-solid fa-print"></i> พิมพ์ / PDF</button>
+          <button class="icon-btn edit" onclick="editQuotation('${q.id}')"><i class="fa-solid fa-pen-to-square"></i> แก้ไข</button>
           ${profile.role === 'admin' ? `<button class="icon-btn del" onclick="deleteQuotationRecord('${q.id}')"><i class="fa-solid fa-trash"></i> ลบ</button>` : ''}
         </div>
       </div>
@@ -1172,6 +1405,10 @@ window.printQuotationDocument = function(qId) {
   const cust = customersCache.find(x => x.id === q.customerId);
   const paper = document.getElementById('quotationPaper');
   
+  // Find original creator name from cache
+  const creatorObj = usersCache.find(x => x.uid === q.createdBy);
+  const creatorName = creatorObj ? creatorObj.name : 'ผู้ดูแลระบบ';
+  
   const itemsHtml = q.items.map((it, idx) => `
     <tr>
       <td style="text-align:center; border:1px solid #cbd5e1; padding:8px;">${idx + 1}</td>
@@ -1190,6 +1427,10 @@ window.printQuotationDocument = function(qId) {
     </tr>
   ` : '';
   
+  const custPhoneLine = cust && cust.phone ? `<br><strong>เบอร์โทร/ผู้ติดต่อ:</strong> ${escapeHtml(cust.phone)}` : '';
+  const custTaxLine = cust && cust.taxId ? `<br><strong>เลขประจำตัวผู้เสียภาษี (Tax ID):</strong> ${escapeHtml(cust.taxId)}` : '';
+  const custAddressLine = cust && cust.address ? `<br><strong>ที่อยู่:</strong> ${escapeHtml(cust.address).replace(/\n/g, '<br>')}` : '';
+  
   paper.innerHTML = `
     <div style="display:flex; justify-content:space-between; border-bottom:2px solid #0f172a; padding-bottom:12px; margin-bottom:20px;">
       <div>
@@ -1206,9 +1447,7 @@ window.printQuotationDocument = function(qId) {
       <div class="print-box" style="border:1px solid #cbd5e1; padding:12px; border-radius:6px; background:#f8fafc;">
         <div style="font-size:11px; font-weight:700; text-transform:uppercase; color:#475569; border-bottom:1px solid #e2e8f0; padding-bottom:4px; margin-bottom:8px;">👤 ข้อมูลลูกค้า / ผู้รับการเสนอราคา</div>
         <div style="font-size:12px; line-height:1.6;">
-          <strong>ลูกค้า/บริษัท:</strong> ${cust ? escapeHtml(cust.name) : '-'}<br>
-          <strong>รายละเอียดสัญญา:</strong> ${cust && cust.note ? escapeHtml(cust.note) : '-'}<br>
-          <strong>วันสิ้นสุดบริการ:</strong> ${cust && cust.contractEndDate ? escapeHtml(cust.contractEndDate) : '-'}
+          <strong>ลูกค้า/บริษัท:</strong> ${cust ? escapeHtml(cust.name) : '-'}${custPhoneLine}${custTaxLine}${custAddressLine}
         </div>
       </div>
       <div class="print-box" style="border:1px solid #cbd5e1; padding:12px; border-radius:6px; background:#f8fafc;">
@@ -1216,7 +1455,7 @@ window.printQuotationDocument = function(qId) {
         <div style="font-size:12px; line-height:1.6;">
           <strong>เลขที่เอกสาร:</strong> <strong>${escapeHtml(q.code)}</strong><br>
           <strong>วันที่เอกสาร:</strong> ${escapeHtml(q.date)}<br>
-          <strong>ผู้ออกเอกสาร:</strong> ${profile ? escapeHtml(profile.name) : '-'}
+          <strong>ผู้จัดทำ:</strong> ${escapeHtml(creatorName)}
         </div>
       </div>
     </div>
@@ -1378,6 +1617,7 @@ function initRealtimeListeners() {
     tasksCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     
     filterAndRenderTasks();
+    renderProjects(projectsCache); // re-render projects so task list updates inside cards
     renderDashboardStats(tasksCache, projectsCache, customersCache, usersCache);
     renderTeamMembers(usersCache, tasksCache);
     checkTaskReminders(tasksCache);
@@ -1415,58 +1655,15 @@ function initRealtimeListeners() {
     renderTeamActivity(updates);
   });
 
-  // 5. Quotations listener (Equality queries do NOT require composite indexes!)
+  // 5. Quotations listener
   const q = query(collection(db, 'settings'), where('type', '==', 'quotation'));
   onSnapshot(q, (snap) => {
     quotationsCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    renderQuotations(quotationsCache);
+    filterAndRenderQuotations();
   });
 }
 
 // ---------- RENDER VIEWS & CONTROLLERS ----------
-
-function renderProjects(projects) {
-  const box = document.getElementById('projectList');
-  if (projects.length === 0) {
-    box.innerHTML = '<p class="muted">ยังไม่มีโปรเจกต์</p>';
-    return;
-  }
-  
-  box.innerHTML = projects.map(p => {
-    const cust = customersCache.find(x => x.id === p.customerId);
-    const custLabel = cust ? `ลูกค้า: ${cust.name}` : '';
-    
-    const projTasks = tasksCache.filter(t => t.projectId === p.id);
-    let pct = 0;
-    if (projTasks.length > 0) {
-      const completed = projTasks.filter(t => t.status === 'done').length;
-      pct = Math.round((completed / projTasks.length) * 100);
-    }
-    
-    return `
-      <div class="card project-card">
-        <div style="display:flex; justify-content:space-between; align-items:flex-start">
-          <strong style="font-size:15px">${p.name}</strong>
-          <span class="badge ${p.status}">${p.status}</span>
-        </div>
-        <div style="font-size:12px; margin-top:4px; color:var(--text-muted)">
-          ${custLabel ? `<div>${custLabel}</div>` : ''}
-          เริ่ม ${p.startDate || '-'} · กำหนดเสร็จ ${p.dueDate || '-'}
-        </div>
-        <div class="progress-container">
-          <div class="progress-bar-bg">
-            <div class="progress-bar-fill" style="width: ${pct}%"></div>
-          </div>
-          <span class="progress-pct">${pct}%</span>
-        </div>
-        <div class="card-actions">
-          <button class="icon-btn edit" onclick="editProject('${p.id}')"><i class="fa-solid fa-pen-to-square"></i> แก้ไข</button>
-          ${profile.role === 'admin' ? `<button class="icon-btn del" onclick="deleteProject('${p.id}')"><i class="fa-solid fa-trash"></i> ลบ</button>` : ''}
-        </div>
-      </div>
-    `;
-  }).join('');
-}
 
 window.filterAndRenderTasks = function() {
   const queryText = document.getElementById('taskSearch').value.toLowerCase().trim();
@@ -1476,7 +1673,10 @@ window.filterAndRenderTasks = function() {
   const priorityFilter = document.getElementById('filterPriority').value;
   
   const uids = visibleUids();
-  let list = uids ? tasksCache.filter(t => uids.includes(t.assignee)) : [...tasksCache];
+  let list = uids ? tasksCache.filter(t => {
+    const isAssigned = t.assignees ? t.assignees.includes(profile.uid) : (t.assignee === profile.uid);
+    return isAssigned;
+  }) : [...tasksCache];
   
   if (queryText) {
     list = list.filter(t => t.title.toLowerCase().includes(queryText) || (t.description && t.description.toLowerCase().includes(queryText)));
@@ -1485,7 +1685,7 @@ window.filterAndRenderTasks = function() {
     list = list.filter(t => t.projectId === projFilter);
   }
   if (assigneeFilter) {
-    list = list.filter(t => t.assignee === assigneeFilter);
+    list = list.filter(t => t.assignees ? t.assignees.includes(assigneeFilter) : (t.assignee === assigneeFilter));
   }
   if (statusFilter) {
     list = list.filter(t => t.status === statusFilter);
@@ -1506,6 +1706,19 @@ window.clearTaskFilters = function() {
   filterAndRenderTasks();
 };
 
+window.filterAndRenderQuotations = function() {
+  const queryText = document.getElementById('quotationSearch').value.toLowerCase().trim();
+  let list = [...quotationsCache];
+  if (queryText) {
+    list = list.filter(q => {
+      const cust = customersCache.find(x => x.id === q.customerId);
+      const custName = cust ? cust.name.toLowerCase() : '';
+      return q.code.toLowerCase().includes(queryText) || custName.includes(queryText);
+    });
+  }
+  renderQuotations(list);
+};
+
 function renderTasksList(tasks) {
   const box = document.getElementById('taskList');
   if (tasks.length === 0) {
@@ -1514,9 +1727,14 @@ function renderTasksList(tasks) {
   }
   
   box.innerHTML = tasks.map(t => {
-    const user = usersCache.find(x => x.uid === t.assignee);
+    // Map assignees names
+    const assignedUsers = t.assignees 
+      ? t.assignees.map(uid => usersCache.find(x => x.uid === uid)).filter(Boolean)
+      : (t.assignee ? [usersCache.find(x => x.uid === t.assignee)].filter(Boolean) : []);
+    const namesLabel = assignedUsers.map(u => u.name).join(', ') || '-';
+    
     const proj = projectsCache.find(x => x.id === t.projectId);
-    const canEdit = profile.role === 'admin' || t.assignee === profile.uid;
+    const canEdit = profile.role === 'admin' || (t.assignees ? t.assignees.includes(profile.uid) : (t.assignee === profile.uid));
     const prioClass = t.priority || 'mid';
     const prioLabel = { urgent: 'ด่วนที่สุด', high: 'สูง', mid: 'กลาง', low: 'ต่ำ' }[prioClass];
     
@@ -1542,7 +1760,7 @@ function renderTasksList(tasks) {
         </div>
         <div class="task-card-meta">
           <div class="meta-item"><i class="fa-solid fa-folder"></i> ${proj ? proj.name : '-'}</div>
-          <div class="meta-item"><i class="fa-solid fa-user-check"></i> ${user ? user.name : '-'}</div>
+          <div class="meta-item"><i class="fa-solid fa-user-check"></i> ${namesLabel}</div>
           <div class="meta-item"><i class="fa-solid fa-calendar-day"></i> ${t.dueDate || '-'}</div>
           <div class="meta-item"><span class="badge ${prioClass}" style="font-size:9px; padding:1px 5px">${prioLabel}</span></div>
         </div>
@@ -1550,67 +1768,6 @@ function renderTasksList(tasks) {
         <div class="card-actions" onclick="event.stopPropagation()">
           ${canEdit ? `<button class="icon-btn edit" onclick="openAddTaskModal('${t.id}')"><i class="fa-solid fa-pen-to-square"></i> แก้ไข</button>` : ''}
           ${profile.role === 'admin' ? `<button class="icon-btn del" onclick="deleteTask('${t.id}')"><i class="fa-solid fa-trash"></i> ลบ</button>` : ''}
-        </div>
-      </div>
-    `;
-  }).join('');
-}
-
-function renderCustomers(customers) {
-  const box = document.getElementById('customerList');
-  if (customers.length === 0) {
-    box.innerHTML = '<p class="muted">ยังไม่มีข้อมูลลูกค้า</p>';
-    return;
-  }
-  
-  box.innerHTML = customers.map(c => {
-    const days = daysUntil(c.contractEndDate);
-    const daysLabel = days < 0 ? `หมดอายุแล้ว ${Math.abs(days)} วัน` : (days === 0 ? 'หมดอายุวันนี้!' : `เหลือเวลาอีก ${days} วัน`);
-    const dateClass = days <= 30 ? 'badge urgent' : 'badge done';
-    
-    return `
-      <div class="card">
-        <div style="display:flex; justify-content:space-between; align-items:flex-start">
-          <strong style="font-size:15px; color:var(--text-dark);"><i class="fa-regular fa-building"></i> ${c.name}</strong>
-          <span class="${dateClass}">${daysLabel}</span>
-        </div>
-        <div class="ts"><i class="fa-regular fa-calendar-check"></i> ครบกำหนดสัญญา: ${c.contractEndDate || '-'}</div>
-        ${c.note ? `<div style="margin-top:8px; font-size:13px; color:var(--text-muted); background:#f8fafc; padding:8px; border-radius:6px; border:1px solid var(--border-color)">${c.note}</div>` : ''}
-        <div class="card-actions">
-          <button class="icon-btn edit" onclick="editCustomer('${c.id}')"><i class="fa-solid fa-pen-to-square"></i> แก้ไข</button>
-          ${profile.role === 'admin' ? `<button class="icon-btn del" onclick="deleteCustomer('${c.id}')"><i class="fa-solid fa-trash"></i> ลบ</button>` : ''}
-        </div>
-      </div>
-    `;
-  }).join('');
-}
-
-function renderDailyUpdates(updates) {
-  const box = document.getElementById('updateList');
-  if (updates.length === 0) {
-    box.innerHTML = '<p class="muted">ยังไม่มีบันทึกอัปเดตงาน</p>';
-    return;
-  }
-  
-  box.innerHTML = updates.map(u => {
-    const person = usersCache.find(x => x.uid === u.uid);
-    const canEdit = profile.role === 'admin' || u.uid === profile.uid;
-    const initial = person ? person.name.charAt(0).toUpperCase() : '?';
-    return `
-      <div class="card" style="display:flex; gap:12px; align-items:start;">
-        <div class="feed-avatar">${initial}</div>
-        <div style="flex:1;">
-          <div style="display:flex; justify-content:space-between; align-items:center;">
-            <strong style="font-size:14px; color:var(--text-dark);">${person ? person.name : 'พนักงาน'}</strong>
-            <span class="ts"><i class="fa-regular fa-calendar"></i> ${u.date}</span>
-          </div>
-          <div style="margin-top:6px; font-size:13px; white-space:pre-wrap; line-height:1.4">${u.text}</div>
-          ${canEdit ? `
-            <div class="card-actions">
-              <button class="icon-btn edit" onclick="editUpdate('${u.id}')"><i class="fa-solid fa-pen-to-square"></i> แก้ไข</button>
-              <button class="icon-btn del" onclick="deleteUpdate('${u.id}')"><i class="fa-solid fa-trash"></i> ลบ</button>
-            </div>
-          ` : ''}
         </div>
       </div>
     `;
@@ -1626,11 +1783,10 @@ function renderDashboardStats(tasks, projects, customers, users) {
   
   const soonContracts = customers.filter(c => {
     const d = daysUntil(c.contractEndDate);
-    return d >= 0 && d <= 30; // 30 days contract renewals
+    return d >= 0 && d <= 30;
   });
   document.getElementById('statExpiringContracts').textContent = soonContracts.length;
   
-  // Doughnut Chart status
   const doneCount = tasks.filter(t => t.status === 'done').length;
   const inprogCount = tasks.filter(t => t.status === 'inprog').length;
   const notyetCount = tasks.filter(t => t.status === 'notyet').length;
@@ -1664,10 +1820,9 @@ function renderDashboardStats(tasks, projects, customers, users) {
     }
   });
 
-  // Urgent list
   const urgentBox = document.getElementById('urgentDashboardList');
   const uids = visibleUids();
-  let userTasks = uids ? tasks.filter(t => uids.includes(t.assignee)) : tasks;
+  let userTasks = uids ? tasks.filter(t => t.assignees ? t.assignees.includes(profile.uid) : (t.assignee === profile.uid)) : tasks;
   
   const urgentTasks = userTasks.filter(t => {
     if (t.status === 'done') return false;
@@ -1694,7 +1849,6 @@ function renderDashboardStats(tasks, projects, customers, users) {
     }).join('');
   }
 
-  // Projects progress
   const projBox = document.getElementById('projectDashboardList');
   if (projects.length === 0) {
     projBox.innerHTML = '<p class="muted">ไม่มีโครงการในระบบ</p>';
@@ -1755,7 +1909,11 @@ function renderTeamMembers(users, tasks) {
   }
   
   list.innerHTML = users.map(u => {
-    const activeCount = tasks.filter(t => t.assignee === u.uid && t.status !== 'done').length;
+    const activeCount = tasks.filter(t => {
+      const isAssigned = t.assignees ? t.assignees.includes(u.uid) : (t.assignee === u.uid);
+      return isAssigned && t.status !== 'done';
+    }).length;
+    
     const isCurrentUser = currentUser && currentUser.uid === u.uid;
     const nameLabel = u.name + (isCurrentUser ? ' (คุณ)' : '');
     const roleLabel = u.role === 'admin' ? 'หัวหน้า' : 'พนักงาน';
@@ -1800,14 +1958,31 @@ function daysUntil(dateStr) {
 
 function checkTaskReminders(tasks) {
   const uids = visibleUids();
-  const mine = uids ? tasks.filter(t => uids.includes(t.assignee)) : tasks;
-  const soon = mine.filter(t => t.status !== 'done' && daysUntil(t.dueDate) <= 3 && daysUntil(t.dueDate) >= 0);
-  const items = soon.map(t => ({
+  const mine = uids ? tasks.filter(t => t.assignees ? t.assignees.includes(profile.uid) : (t.assignee === profile.uid)) : tasks;
+  
+  // 1. Unfinished tasks close to due date within 5 days
+  const soon = mine.filter(t => t.status !== 'done' && daysUntil(t.dueDate) <= 5 && daysUntil(t.dueDate) >= 0);
+  const soonItems = soon.map(t => ({
     id: t.id,
     type: 'task',
-    text: `งาน "${t.title}" กำหนดส่งในอีก ${daysUntil(t.dueDate)} วัน`
+    text: `📅 งาน "${t.title}" ใกล้กำหนดส่งในอีก ${daysUntil(t.dueDate)} วัน`
   }));
-  renderNotifBanner('task', items);
+  
+  // 2. Unfinished tasks not updated for > 5 days (stalled)
+  const now = new Date();
+  const stalled = mine.filter(t => {
+    if (t.status === 'done') return false;
+    const lastUpdatedDate = t.updatedAt ? t.updatedAt.toDate() : (t.createdAt ? t.createdAt.toDate() : new Date());
+    const elapsedDays = Math.round((now - lastUpdatedDate) / 86400000);
+    return elapsedDays > 5;
+  });
+  const stalledItems = stalled.map(t => ({
+    id: t.id,
+    type: 'task',
+    text: `⚠️ งาน "${t.title}" ค้างไว้ไม่มีการเคลื่อนไหวเกิน 5 วัน`
+  }));
+  
+  renderNotifBanner('task', [...soonItems, ...stalledItems]);
 }
 
 function checkContractReminders(customers) {
@@ -1854,9 +2029,11 @@ window.clickNotifTask = function(taskId) {
 window.clickNotifCustomer = function(customerId) {
   document.getElementById('notifBanner').classList.remove('open');
   showPage('customers');
-  const card = document.getElementById('customerList');
+  const card = document.getElementById(`customer-card-${customerId}`);
   if (card) {
-    card.scrollIntoView({ behavior: 'smooth' });
+    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    card.classList.add('highlight-flash');
+    setTimeout(() => card.classList.remove('highlight-flash'), 2000);
   }
 };
 
@@ -1864,7 +2041,7 @@ document.getElementById('bellBtn').addEventListener('click', () => {
   document.getElementById('notifBanner').classList.toggle('open');
 });
 
-// ---------- CREATE MEMBER ENGINE (Secondary Auth Bypass with inMemoryPersistence & secondaryDb Rules Bypass) ----------
+// ---------- CREATE MEMBER ENGINE ----------
 
 document.getElementById('addUserForm')?.addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -1875,13 +2052,10 @@ document.getElementById('addUserForm')?.addEventListener('submit', async (e) => 
   errBox.textContent = '';
   
   try {
-    // 1. Force the secondary Auth instance to utilize inMemoryPersistence (never overrides admin's local session)
     await setPersistence(secondaryAuth, inMemoryPersistence);
-    
-    // 2. Register account on secondaryAuth instance
     const cred = await createUserWithEmailAndPassword(secondaryAuth, email, pw);
     
-    // 3. Obtain Firestore client linked to secondaryApp, writing as the new user to bypass custom rules
+    // Write profile under secondary Firestore client session (satisfies users rules check)
     const secondaryDb = getFirestore(secondaryApp);
     await setDoc(doc(secondaryDb, 'users', cred.user.uid), {
       name: name,
@@ -1890,9 +2064,7 @@ document.getElementById('addUserForm')?.addEventListener('submit', async (e) => 
       createdAt: serverTimestamp()
     });
     
-    // 4. Gracefully sign out secondaryAuth instantly
     await signOut(secondaryAuth);
-    
     alert('สร้างบัญชีพนักงานสำเร็จ!\nอีเมล: ' + email + '\nรหัสผ่าน: ' + pw + '\nพนักงานสามารถล็อกอินได้เลย แอดมินยังคงล็อกอินปกติ');
     document.getElementById('addUserForm').reset();
     await loadUsers();
@@ -1929,15 +2101,21 @@ window.exportCSVGeneric = (type) => {
     downloadCSV('asg-work-projects.csv', rows);
   } else if (type === 'tasks') {
     const rows = [['ชื่องาน', 'โครงการ', 'ผู้รับผิดชอบ', 'ระดับบริการ', 'ผู้สั่งงาน', 'ความเร่งด่วน', 'กำหนดส่ง', 'สถานะ', 'รายละเอียด']];
-    tasksCache.forEach(t => rows.push([t.title, projectNameOf(t.projectId), nameOf(t.assignee), t.category, t.assigner, t.priority, t.dueDate, t.status, t.description]));
+    tasksCache.forEach(t => {
+      const assignedUsers = t.assignees 
+        ? t.assignees.map(uid => usersCache.find(x => x.uid === uid)).filter(Boolean)
+        : (t.assignee ? [usersCache.find(x => x.uid === t.assignee)].filter(Boolean) : []);
+      const names = assignedUsers.map(u => u.name).join(', ') || '-';
+      rows.push([t.title, projectNameOf(t.projectId), names, t.category, t.assigner, t.priority, t.dueDate, t.status, t.description]);
+    });
     downloadCSV('asg-work-tasks.csv', rows);
   } else if (type === 'updates') {
     const rows = [['วันที่', 'ผู้บันทึก', 'รายละเอียดการทำงาน']];
     updatesCache.forEach(u => rows.push([u.date, nameOf(u.uid), u.text]));
     downloadCSV('asg-work-daily-updates.csv', rows);
   } else if (type === 'customers') {
-    const rows = [['ชื่อลูกค้า/บริษัท', 'วันครบสัญญา', 'แจ้งเตือนล่วงหน้า (วัน)', 'หมายเหตุ']];
-    customersCache.forEach(c => rows.push([c.name, c.contractEndDate, c.reminderDays, c.note]));
+    const rows = [['ชื่อลูกค้า/บริษัท', 'เลขประจำตัวผู้เสียภาษี', 'เบอร์โทร', 'วันครบสัญญา', 'ที่อยู่', 'หมายเหตุ']];
+    customersCache.forEach(c => rows.push([c.name, c.taxId, c.phone, c.contractEndDate, c.address, c.note]));
     downloadCSV('asg-work-customers.csv', rows);
   }
 };
