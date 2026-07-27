@@ -89,6 +89,22 @@ function adjustColorBrightness(hex, percent) {
   return "#" + (0x1000000 + R * 0x10000 + G * 0x100 + B).toString(16).slice(1);
 }
 
+async function logActivity(text) {
+  try {
+    const now = new Date();
+    const timeFormatted = now.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+    await addDoc(collection(db, 'dailyUpdates'), {
+      uid: profile.uid,
+      date: now.toISOString().slice(0, 10),
+      time: timeFormatted,
+      text: text,
+      createdAt: serverTimestamp()
+    });
+  } catch (err) {
+    console.error('Error logging activity:', err);
+  }
+}
+
 window.setAppTheme = function(color) {
   localStorage.setItem('asg_theme_color', color);
   applyThemeColor(color);
@@ -667,6 +683,7 @@ document.getElementById('taskFormSubmit').addEventListener('submit', async (e) =
   try {
     if (editingTaskId) {
       await updateDoc(doc(db, 'tasks', editingTaskId), data);
+      await logActivity(`แก้ไขรายละเอียดงาน "${data.title}"`);
     } else {
       const newTask = {
         ...data,
@@ -679,8 +696,10 @@ document.getElementById('taskFormSubmit').addEventListener('submit', async (e) =
         createdAt: serverTimestamp()
       };
       await addDoc(collection(db, 'tasks'), newTask);
+      await logActivity(`สร้างงานใหม่ "${data.title}"`);
     }
     closeAddTaskModal();
+    showPage('updates');
   } catch (err) {
     alert('เกิดข้อผิดพลาดในการเซฟงาน: ' + err.message);
   }
@@ -833,6 +852,9 @@ window.toggleSubtaskStatus = async (idx, done) => {
   else if (pct > 0 && status === 'notyet') status = 'inprog';
   
   await updateDoc(doc(db, 'tasks', activeDetailsTaskId), { subtasks, percent: pct, status });
+  
+  const subText = subtasks[idx].text;
+  await logActivity(`อัปเดตงาน "${t.title}": ${done ? '✅ ติ๊กเสร็จ' : '❌ ติ๊กยกเลิก'}งานย่อย "${subText}"`);
 };
 
 window.addNewSubtaskClick = async () => {
@@ -854,6 +876,7 @@ window.addNewSubtaskClick = async () => {
   else if (pct > 0 && status === 'notyet') status = 'inprog';
   
   await updateDoc(doc(db, 'tasks', activeDetailsTaskId), { subtasks, percent: pct, status });
+  await logActivity(`อัปเดตงาน "${t.title}": ➕ เพิ่มงานย่อย "${text}"`);
   input.value = '';
 };
 
@@ -863,6 +886,7 @@ window.deleteSubtask = async (idx) => {
   if (!t) return;
   
   const subtasks = [...(t.subtasks || [])];
+  const delText = subtasks[idx].text;
   subtasks.splice(idx, 1);
   
   let pct = 0;
@@ -875,6 +899,7 @@ window.deleteSubtask = async (idx) => {
   if (pct === 100 && subtasks.length > 0) status = 'done';
   
   await updateDoc(doc(db, 'tasks', activeDetailsTaskId), { subtasks, percent: pct, status });
+  await logActivity(`อัปเดตงาน "${t.title}": ➖ ลบงานย่อย "${delText}"`);
 };
 
 // ---------- PROGRESS TIMELINE / TASKS TIMELINE LOGIC ----------
@@ -917,16 +942,11 @@ window.addTaskProgressUpdateClick = async () => {
   });
   
   await updateDoc(doc(db, 'tasks', activeDetailsTaskId), { updates });
-  
-  // Auto publish to standup updates
-  await addDoc(collection(db, 'dailyUpdates'), {
-    uid: profile.uid,
-    date: now.toISOString().slice(0, 10),
-    text: `อัปเดตความคืบหน้างาน "${t.title}": ${text}`,
-    createdAt: serverTimestamp()
-  });
+  await logActivity(`อัปเดตงาน "${t.title}": ${text}`);
   
   input.value = '';
+  document.getElementById('taskDetailsModal').classList.remove('open');
+  showPage('updates');
 };
 
 // ---------- LINE SHARE & CLIPBOARD FUNCTIONS ----------
@@ -1068,6 +1088,12 @@ window.onModalStatusChange = async (val) => {
   }
   
   await updateDoc(doc(db, 'tasks', activeDetailsTaskId), updates);
+  
+  const statusLabels = { notyet: 'ยังไม่เริ่ม', inprog: 'กำลังทำ', done: 'เสร็จแล้ว' };
+  await logActivity(`เปลี่ยนสถานะงาน "${t.title}" เป็น ${statusLabels[val] || val}`);
+  
+  document.getElementById('taskDetailsModal').classList.remove('open');
+  showPage('updates');
 };
 
 // ---------- CALENDAR LOGIC ----------
@@ -2002,38 +2028,77 @@ function renderDailyUpdates(updates) {
   const box = document.getElementById('updateList');
   if (!box) return;
   if (!updates || updates.length === 0) {
-    box.innerHTML = '<p class="muted">ไม่มีบันทึกอัปเดตงานในระบบ</p>';
+    box.innerHTML = '<p class="muted">ไม่มีบันทึกกิจกรรมการทำงานในวันที่เลือก</p>';
     return;
   }
   
-  box.innerHTML = updates.map(u => {
-    const user = usersCache.find(x => x.uid === u.uid);
+  // Group updates by uid
+  const grouped = {};
+  updates.forEach(u => {
+    if (!grouped[u.uid]) {
+      grouped[u.uid] = [];
+    }
+    grouped[u.uid].push(u);
+  });
+  
+  // Render a card for each user
+  const htmlParts = Object.keys(grouped).map(uid => {
+    const userUpdates = grouped[uid];
+    userUpdates.sort((a, b) => {
+      const timeA = a.time || '';
+      const timeB = b.time || '';
+      return timeA.localeCompare(timeB);
+    });
+    
+    const user = usersCache.find(x => x.uid === uid);
     const userName = user ? user.name : 'ไม่ระบุผู้ใช้';
-    const isOwner = currentUser && currentUser.uid === u.uid;
-    const canManage = isOwner || (profile && profile.role === 'admin');
-    const escapedText = u.text.replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g, '\\n');
+    const canDeleteAny = profile && profile.role === 'admin';
+    
+    const listHtml = userUpdates.map(u => {
+      const displayTime = u.time ? `[${u.time}]` : '';
+      const isOwner = currentUser && currentUser.uid === u.uid;
+      const canManage = isOwner || canDeleteAny;
+      
+      return `
+        <li style="margin-bottom: 6px; display:flex; justify-content:space-between; align-items:start; list-style:none;">
+          <span style="font-size:13.5px; line-height:1.5; color:var(--text-dark);">
+            <span style="color:var(--text-muted); font-weight:600; margin-right:4px;">${displayTime}</span> ${escapeHtml(u.text)}
+          </span>
+          ${canManage ? `
+            <button onclick="deleteUpdate('${u.id}')" style="font-size:10px; padding:2px 4px; margin-left:8px; border:none; background:none; color:var(--high-color); cursor:pointer;" title="ลบรายการนี้"><i class="fa-solid fa-trash"></i></button>
+          ` : ''}
+        </li>
+      `;
+    }).join('');
+    
+    const dateStr = userUpdates[0].date;
+    const reportDetailsText = userUpdates.map(u => {
+      const displayTime = u.time ? `[${u.time}]` : '';
+      return `- ${displayTime} ${u.text}`;
+    }).join('\n');
+    
+    const escapedText = reportDetailsText.replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g, '\\n');
     
     return `
-      <div class="card" style="margin-bottom: 8px;">
-        <div style="display:flex; justify-content:space-between; align-items:start; border-bottom:1px solid var(--border-color); padding-bottom:8px; margin-bottom:8px;">
+      <div class="card" style="margin-bottom: 12px; border-left: 4px solid var(--primary-red); padding: 12px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border-color); padding-bottom:8px; margin-bottom:8px;">
           <div>
-            <strong style="color:var(--primary-red); font-size:14px;"><i class="fa-solid fa-user-pen"></i> ${userName}</strong>
-            <span class="ts" style="margin-left: 8px;"><i class="fa-solid fa-calendar-day"></i> ${u.date}</span>
+            <strong style="color:var(--primary-red); font-size:15px;"><i class="fa-solid fa-user-tie"></i> ${userName}</strong>
+            <span class="ts" style="margin-left: 10px; font-size:12px; color:var(--text-muted);"><i class="fa-solid fa-calendar-day"></i> ${dateStr}</span>
           </div>
           <div style="display:flex; gap:6px; align-items:center;">
-            <button class="btn btn-ghost btn-sm" onclick="sendIndividualUpdateToLine('${userName}', '${u.date}', '${escapedText}')" style="padding: 2px 8px; font-size:11px; color:#06c755; display:inline-flex; align-items:center; gap:3px;" title="แชร์อัปเดตของคนนี้เข้า LINE"><i class="fa-brands fa-line"></i> ส่ง LINE</button>
-            <button class="btn btn-ghost btn-sm" onclick="copyIndividualUpdateText('${userName}', '${u.date}', '${escapedText}')" style="padding: 2px 8px; font-size:11px; display:inline-flex; align-items:center; gap:3px;" title="คัดลอกข้อความอัปเดตของคนนี้"><i class="fa-regular fa-copy"></i> คัดลอก</button>
-            ${canManage ? `
-              <span style="border-left: 1px solid var(--border-color); height: 14px; margin: 0 4px;"></span>
-              ${isOwner ? `<button class="icon-btn edit" onclick="editUpdate('${u.id}')" style="font-size:11px;"><i class="fa-solid fa-pen-to-square"></i> แก้ไข</button>` : ''}
-              <button class="icon-btn del" onclick="deleteUpdate('${u.id}')" style="font-size:11px;"><i class="fa-solid fa-trash"></i> ลบ</button>
-            ` : ''}
+            <button class="btn btn-ghost btn-sm" onclick="sendIndividualGroupedUpdateToLine('${userName}', '${dateStr}', '${escapedText}')" style="padding: 3px 8px; font-size:11px; color:#06c755; display:inline-flex; align-items:center; gap:3px;" title="ส่งไลน์รายงานความคืบหน้าของพนักงานคนนี้"><i class="fa-brands fa-line"></i> ส่ง LINE</button>
+            <button class="btn btn-ghost btn-sm" onclick="copyIndividualGroupedUpdateText('${userName}', '${dateStr}', '${escapedText}')" style="padding: 3px 8px; font-size:11px; display:inline-flex; align-items:center; gap:3px;" title="คัดลอกรายงานของพนักงานคนนี้"><i class="fa-regular fa-copy"></i> คัดลอก</button>
           </div>
         </div>
-        <div style="font-size:13.5px; white-space:pre-wrap; line-height:1.5; color:var(--text-dark);">${escapeHtml(u.text)}</div>
+        <ul style="margin: 0; padding-left: 4px;">
+          ${listHtml}
+        </ul>
       </div>
     `;
-  }).join('');
+  });
+  
+  box.innerHTML = htmlParts.join('');
 }
 
 window.filterAndRenderDailyUpdates = () => {
@@ -2048,35 +2113,6 @@ window.filterAndRenderDailyUpdates = () => {
   }
   
   renderDailyUpdates(list);
-};
-
-function formatIndividualUpdateMessage(name, dateStr, text) {
-  const dParts = dateStr.split('-');
-  let dateFormatted = dateStr;
-  if (dParts.length === 3) {
-    const dObj = new Date(dParts[0], dParts[1] - 1, dParts[2]);
-    dateFormatted = dObj.toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
-  }
-  return `📢 รายงานความคืบหน้าการทำงาน (รายบุคคล)\n` +
-         `👤 ผู้รายงาน: ${name}\n` +
-         `📅 ประจำวันที่: ${dateFormatted}\n` +
-         `📝 รายละเอียดอัปเดต:\n- ${text}\n\n` +
-         `🔗 ลิงก์ระบบ: https://manybear.github.io/asg-work/`;
-}
-
-window.sendIndividualUpdateToLine = (name, dateStr, text) => {
-  const msg = formatIndividualUpdateMessage(name, dateStr, text);
-  const lineUrl = `https://line.me/R/msg/text/?${encodeURIComponent(msg)}`;
-  window.open(lineUrl, '_blank');
-};
-
-window.copyIndividualUpdateText = (name, dateStr, text) => {
-  const msg = formatIndividualUpdateMessage(name, dateStr, text);
-  navigator.clipboard.writeText(msg).then(() => {
-    alert(`คัดลอกสรุปอัปเดตของ ${name} สำเร็จ!`);
-  }).catch(err => {
-    alert('ไม่สามารถคัดลอกได้: ' + err.message);
-  });
 };
 
 function renderTeamActivity(updates) {
@@ -2366,12 +2402,28 @@ function generateDailyReportText() {
     dateFormatted = dObj.toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
   }
   
+  // Group by user
+  const grouped = {};
+  todayUpdates.forEach(u => {
+    if (!grouped[u.uid]) grouped[u.uid] = [];
+    grouped[u.uid].push(u);
+  });
+  
   let msg = `📢 รายงานความคืบหน้าทีมงาน (Daily Standup)\n📅 ประจำวันที่: ${dateFormatted}\n\n`;
-  todayUpdates.forEach((u, index) => {
-    const user = usersCache.find(x => x.uid === u.uid);
+  
+  Object.keys(grouped).forEach((uid, index) => {
+    const userUpdates = grouped[uid];
+    userUpdates.sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+    
+    const user = usersCache.find(x => x.uid === uid);
     const userName = user ? user.name : 'ไม่ระบุผู้ใช้';
-    msg += `👤 ${index + 1}. ${userName}\n` +
-           `📝 อัปเดต: ${u.text}\n\n`;
+    
+    msg += `👤 ${index + 1}. ${userName}\n`;
+    userUpdates.forEach(u => {
+      const displayTime = u.time ? `[${u.time}] ` : '';
+      msg += `   - ${displayTime}${u.text}\n`;
+    });
+    msg += `\n`;
   });
   
   msg += `🔗 ลิงก์ระบบ: https://manybear.github.io/asg-work/`;
