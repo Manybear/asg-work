@@ -1610,19 +1610,22 @@ window.downloadQuotationPDF = function() {
 
 // ---------- DAILY UPDATES / HISTORY FEED CRUD ----------
 
-document.getElementById('quickActivityForm').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const textInput = document.getElementById('quickActivityText');
-  const text = textInput.value.trim();
-  if (!text) return;
-  
-  try {
-    await logActivity(text);
-    textInput.value = '';
-  } catch (err) {
-    alert('เกิดข้อผิดพลาดในการบันทึกกิจกรรมด่วน: ' + err.message);
-  }
-});
+const quickActivityForm = document.getElementById('quickActivityForm');
+if (quickActivityForm) {
+  quickActivityForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const textInput = document.getElementById('quickActivityText');
+    const text = textInput ? textInput.value.trim() : '';
+    if (!text) return;
+    
+    try {
+      await logActivity(text);
+      if (textInput) textInput.value = '';
+    } catch (err) {
+      alert('เกิดข้อผิดพลาดในการบันทึกกิจกรรมด่วน: ' + err.message);
+    }
+  });
+}
 
 window.deleteUpdate = async (id) => {
   if (!confirm('ลบรายการประวัตินี้?')) return;
