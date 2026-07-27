@@ -330,6 +330,15 @@ h2.sec {
   align-items: center;
   gap: 16px;
 }
+.stat.clickable {
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+}
+.stat.clickable:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  border-color: var(--primary-red);
+}
 .stat-icon {
   width: 48px;
   height: 48px;
