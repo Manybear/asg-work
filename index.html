@@ -12,6 +12,8 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- html2pdf.js for A4 Quotation PDF downloads -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
   <!-- Main Stylesheet -->
   <link rel="stylesheet" href="style.css">
 </head>
@@ -33,11 +35,13 @@
 <!-- APP SCREEN -->
 <div id="appScreen" class="screen">
   <nav>
-    <span class="logo"><i class="fa-solid fa-square-poll-vertical"></i> ASG WORK</span>
+    <span class="logo" style="display:inline-flex; align-items:center; gap:8px;"><img src="asg_logo.png" alt="ASG Logo" style="width: 28px; height: 28px; border-radius: 6px; object-fit: cover;"> ASG WORK</span>
     <button class="nav-btn active" data-page="dashboard" onclick="showPage('dashboard')">Dashboard</button>
     <button class="nav-btn" data-page="projects" onclick="showPage('projects')">โปรเจกต์</button>
     <button class="nav-btn" data-page="tasks" onclick="showPage('tasks')">รายการงาน</button>
+    <button class="nav-btn" data-page="calendar" onclick="showPage('calendar')">ปฏิทินงาน</button>
     <button class="nav-btn" data-page="customers" onclick="showPage('customers')">ลูกค้า/สัญญา</button>
+    <button class="nav-btn" data-page="quotations" onclick="showPage('quotations')">ใบเสนอราคา</button>
     <button class="nav-btn" data-page="updates" onclick="showPage('updates')">อัปเดตรายวัน</button>
     <button class="nav-btn" data-page="team" onclick="showPage('team')">รายชื่อทีม</button>
     <button class="nav-btn" data-page="settings" onclick="showPage('settings')">ตั้งค่า</button>
@@ -182,7 +186,26 @@
     </div>
   </div>
 
-  <!-- 4. CUSTOMERS PAGE -->
+  <!-- 4. CALENDAR PAGE -->
+  <div class="page" id="page-calendar">
+    <h2 class="sec">ปฏิทินส่งมอบงาน (Calendar)
+      <span class="toolbar">
+        <button type="button" onclick="changeMonth(-1)"><i class="fa-solid fa-chevron-left"></i> เดือนก่อนหน้า</button>
+        <span id="calendarMonthLabel" style="font-weight:700; font-size:16px; margin: 0 10px;"></span>
+        <button type="button" onclick="changeMonth(1)">เดือนถัดไป <i class="fa-solid fa-chevron-right"></i></button>
+      </span>
+    </h2>
+    <div class="card" style="padding: 10px; overflow-x:auto;">
+      <div style="min-width: 700px;">
+        <div class="calendar-grid-header">
+          <div>อา.</div><div>จ.</div><div>อ.</div><div>พ.</div><div>พฤ.</div><div>ศ.</div><div>ส.</div>
+        </div>
+        <div id="calendarDaysGrid" class="calendar-grid-days"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. CUSTOMERS PAGE -->
   <div class="page" id="page-customers">
     <h2 class="sec">ลูกค้า & สัญญาบริการ (Contracts)
       <span class="toolbar">
@@ -201,7 +224,92 @@
     <div id="customerList" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px;"></div>
   </div>
 
-  <!-- 5. DAILY UPDATES PAGE -->
+  <!-- 6. QUOTATIONS PAGE -->
+  <div class="page" id="page-quotations">
+    <h2 class="sec">ระบบออกใบเสนอราคา (Quotations)
+      <span class="toolbar">
+        <button type="button" onclick="openCreateQuotationForm()"><i class="fa-solid fa-plus"></i> ออกใบเสนอราคาใหม่</button>
+      </span>
+    </h2>
+    
+    <!-- Creation Form (collapsible) -->
+    <div class="card" id="quotationFormPanel" style="display:none; margin-bottom: 20px;">
+      <h3 style="font-size:15px; font-weight:700; margin-bottom:15px;" id="quotationFormTitle">ออกใบเสนอราคา</h3>
+      <form id="quotationForm">
+        <div class="form-2col">
+          <div class="form-row">
+            <label>เลขที่ใบเสนอราคา *</label>
+            <input type="text" id="qtCode" placeholder="เช่น QT-2026-001" required>
+          </div>
+          <div class="form-row">
+            <label>วันที่เอกสาร *</label>
+            <input type="date" id="qtDate" required>
+          </div>
+        </div>
+        <div class="form-row">
+          <label>ชื่อลูกค้า / บริษัทผู้รับการเสนอราคา *</label>
+          <select id="qtCustomer" required style="width:100%; padding:10px; border-radius:8px; border:1px solid var(--border-color);"></select>
+        </div>
+        <div class="form-2col">
+          <div class="form-row">
+            <label>ชื่อบริษัท/ผู้ออกเอกสาร *</label>
+            <input type="text" id="qtCompanyName" value="บริษัท แอดวานซ์ บิสซิเนส แมกกาซีน จำกัด" required>
+          </div>
+          <div class="form-row">
+            <label>ที่อยู่ออกเอกสาร *</label>
+            <input type="text" id="qtCompanyAddress" value="427/55 ถนนลาดพร้าว แขวงจอมพล เขตจตุจักร กรุงเทพฯ 10900" required>
+          </div>
+        </div>
+        
+        <!-- Item Table -->
+        <div class="form-row">
+          <label style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 8px;">
+            <span>รายการเสนอราคา</span>
+            <button type="button" class="icon-btn" onclick="addQuotationItemRow()"><i class="fa-solid fa-plus"></i> เพิ่มรายการสินค้า/บริการ</button>
+          </label>
+          <div style="overflow-x:auto;">
+            <table style="width:100%; border-collapse:collapse; min-width: 500px;">
+              <thead>
+                <tr style="background:#f1f5f9; font-weight:700; font-size:12px; border-bottom: 1px solid var(--border-color);">
+                  <th style="padding:10px;">รายละเอียดงาน / สินค้า</th>
+                  <th width="90" style="padding:10px; text-align:center;">จำนวน</th>
+                  <th width="120" style="padding:10px; text-align:right;">ราคา/หน่วย (บาท)</th>
+                  <th width="120" style="padding:10px; text-align:right;">รวมจำนวนเงิน (บาท)</th>
+                  <th width="40" style="padding:10px;"></th>
+                </tr>
+              </thead>
+              <tbody id="quotationItemsBody"></tbody>
+            </table>
+          </div>
+        </div>
+        
+        <!-- Totals calculations -->
+        <div class="form-row" style="display:flex; flex-direction:column; align-items:flex-end; gap:6px; border-top:1px solid var(--border-color); padding-top:15px; margin-top: 10px;">
+          <div style="font-size:13px; color:var(--text-muted)">รวมเป็นเงิน (Subtotal): <strong id="qtSubtotalDisplay" style="color:var(--text-dark)">฿0.00</strong></div>
+          <label style="display:inline-flex; align-items:center; gap:6px; font-size:13px; cursor:pointer; user-select:none;">
+            <input type="checkbox" id="qtVatCheckbox" checked onchange="calculateQuotationTotals()" style="width:16px; height:16px; accent-color:var(--primary-red)"> คิดภาษีมูลค่าเพิ่ม (VAT 7%)
+          </label>
+          <div style="font-size:13px; color:var(--text-muted)" id="qtVatRow">ภาษีมูลค่าเพิ่ม 7%: <strong id="qtVatDisplay" style="color:var(--text-dark)">฿0.00</strong></div>
+          <div style="font-size:16px; font-weight:800;">ยอดเงินรวมสุทธิ (Grand Total): <span id="qtTotalDisplay" style="color:var(--primary-red)">฿0.00</span></div>
+        </div>
+        
+        <div class="form-row">
+          <label>หมายเหตุ / เงื่อนไขการบริการ</label>
+          <textarea id="qtNotes" placeholder="เช่น ชำระมัดจำ 50% ก่อนเริ่มดำเนินการ, ยืนราคา 30 วัน..."></textarea>
+        </div>
+        
+        <div style="display:flex; justify-content:flex-end; gap:10px; border-top:1px solid var(--border-color); padding-top:15px;">
+          <button type="button" class="btn btn-ghost" onclick="closeQuotationFormPanel()">ยกเลิก</button>
+          <button type="submit" class="btn btn-primary"><i class="fa-solid fa-save"></i> บันทึกใบเสนอราคา</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Quotations Grid List -->
+    <div id="quotationList" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px;"></div>
+  </div>
+
+  <!-- 7. DAILY UPDATES PAGE -->
   <div class="page" id="page-updates">
     <h2 class="sec">บันทึกอัปเดตงานวันนี้ (Daily Standup)
       <span class="toolbar">
@@ -217,7 +325,7 @@
     <div id="updateList" style="display: flex; flex-direction: column; gap: 12px;"></div>
   </div>
 
-  <!-- 6. TEAM DIRECTORY PAGE -->
+  <!-- 8. TEAM DIRECTORY PAGE -->
   <div class="page" id="page-team">
     <h2 class="sec">รายชื่อสมาชิกทีมงาน (Team Directory)</h2>
     <div style="display: grid; grid-template-columns: 1.5fr 1fr; gap: 24px; align-items: start;">
@@ -252,9 +360,35 @@
     </div>
   </div>
 
-  <!-- 7. SETTINGS PAGE -->
+  <!-- 9. SETTINGS PAGE -->
   <div class="page" id="page-settings">
     <h2 class="sec">การตั้งค่าระบบ</h2>
+    
+    <!-- User Settings tags management -->
+    <div class="card" id="tagsManagementPanel">
+      <h3 style="font-size:15px; font-weight:700; margin-bottom:15px"><i class="fa-solid fa-tags"></i> จัดการแท็กหมวดหมู่ & ผู้สั่งงาน</h3>
+      
+      <!-- Categories -->
+      <div style="margin-bottom:16px;">
+        <strong style="font-size:13px; color:var(--text-dark);">🏷️ หมวดหมู่งาน (Job Categories)</strong>
+        <div class="theme-picker-grid" id="settingsCategoriesList" style="margin-top:6px; gap:6px;"></div>
+        <div style="display:flex; gap:6px; margin-top:8px; max-width: 400px;">
+          <input type="text" id="newCategoryInput" placeholder="พิมพ์หมวดหมู่ใหม่..." style="flex:1; padding:6px 10px; font-size:13px; border-radius:6px; border:1px solid var(--border-color);">
+          <button type="button" class="btn btn-primary btn-sm" onclick="addNewCategoryClick()" style="padding:6px 12px; font-size:12px;">+ เพิ่ม</button>
+        </div>
+      </div>
+      
+      <!-- Assigners -->
+      <div>
+        <strong style="font-size:13px; color:var(--text-dark);">👤 รายชื่อผู้สั่งงาน (Job Assigners)</strong>
+        <div class="theme-picker-grid" id="settingsAssignersList" style="margin-top:6px; gap:6px;"></div>
+        <div style="display:flex; gap:6px; margin-top:8px; max-width: 400px;">
+          <input type="text" id="newAssignerInput" placeholder="พิมพ์ผู้สั่งงานใหม่..." style="flex:1; padding:6px 10px; font-size:13px; border-radius:6px; border:1px solid var(--border-color);">
+          <button type="button" class="btn btn-primary btn-sm" onclick="addNewAssignerClick()" style="padding:6px 12px; font-size:12px;">+ เพิ่ม</button>
+        </div>
+      </div>
+    </div>
+
     <div class="card">
       <h3 style="font-size:15px; font-weight:700; margin-bottom:15px"><i class="fa-solid fa-eye"></i> สิทธิ์ความเป็นส่วนตัวและการมองเห็นงาน</h3>
       <select id="visibilitySelect" style="width:100%; max-width:400px; padding:10px; border-radius:8px; border:1px solid var(--border-color)">
@@ -320,6 +454,20 @@
       </div>
       <div class="form-2col">
         <div class="form-row">
+          <label>หมวดหมู่การบริการ *</label>
+          <select id="taskCategorySelect" required>
+            <option value="">-- เลือกหมวดหมู่ --</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label>ผู้สั่งงาน *</label>
+          <select id="taskAssignerSelect" required>
+            <option value="">-- เลือกผู้สั่งงาน --</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-2col">
+        <div class="form-row">
           <label>ระดับความเร่งด่วน *</label>
           <select id="taskPrioritySelect" required>
             <option value="low">ต่ำ (ทั่วไป)</option>
@@ -368,9 +516,11 @@
       <div>
         <p><strong>📂 โปรเจกต์:</strong> <span id="detTaskProject" style="color:var(--text-dark)">-</span></p>
         <p style="margin-top: 4px;"><strong>👤 ผู้รับผิดชอบ:</strong> <span id="detTaskAssignee" style="color:var(--text-dark)">-</span></p>
+        <p style="margin-top: 4px;"><strong>🏷️ หมวดหมู่:</strong> <span id="detTaskCategory" style="color:var(--text-dark)">-</span></p>
       </div>
       <div>
         <p><strong>📅 กำหนดส่ง:</strong> <span id="detTaskDue" style="color:var(--text-dark)">-</span></p>
+        <p style="margin-top: 4px;"><strong>👤 ผู้สั่งงาน:</strong> <span id="detTaskAssigner" style="color:var(--text-dark)">-</span></p>
         <p style="margin-top: 4px;"><strong>📊 สถานะ:</strong> 
           <select id="detTaskStatusSelect" onchange="onModalStatusChange(this.value)" style="padding:2px 6px; border-radius:4px; font-size:12px; border:1px solid var(--border-color); background:#fff;">
             <option value="notyet">ยังไม่เริ่ม</option>
@@ -419,14 +569,28 @@
       </div>
     </div>
 
+    <!-- Task Progress Timeline / Updates -->
+    <div class="form-row" style="border-top:1px solid var(--border-color); padding-top:15px">
+      <label style="display:flex; justify-content:space-between; align-items:center;">
+        <span><i class="fa-solid fa-clock-rotate-left"></i> ประวัติการบันทึกอัปเดตงาน (Task Timeline)</span>
+        <button class="btn btn-ghost btn-sm" onclick="sendTaskToLineShare()"><i class="fa-brands fa-line" style="color:#06c755;"></i> แชร์แจ้งเตือน LINE</button>
+      </label>
+      <div class="comments-container" id="detTaskUpdatesTimeline" style="max-height:140px; margin-bottom:8px;"></div>
+      
+      <div style="display:flex; gap:8px">
+        <input type="text" id="newTaskUpdateText" placeholder="พิมพ์บันทึกอัปเดตงาน เช่น ดำเนินการต่ออีก 3 วัน หรือ ส่งตรวจแล้ว..." style="flex:1; padding:8px 12px; border:1px solid var(--border-color); border-radius:8px; font-size:13px">
+        <button class="btn btn-primary" onclick="addTaskProgressUpdateClick()" style="padding:8px 14px; font-size:13px"><i class="fa-solid fa-plus"></i> บันทึก</button>
+      </div>
+    </div>
+
     <!-- Task Real-time Chat/Comments -->
     <div class="form-row" style="border-top:1px solid var(--border-color); padding-top:15px">
-      <label><i class="fa-solid fa-comments"></i> บันทึกโต้ตอบ & คอมเมนต์งานย่อย</label>
+      <label><i class="fa-solid fa-comments"></i> กล่องข้อความพูดคุยโต้ตอบ (Comments)</label>
       <div class="comments-container" id="detTaskComments"></div>
       
       <!-- New comment input -->
       <div style="display:flex; gap:8px; margin-top:12px">
-        <textarea id="newCommentText" placeholder="เขียนคำชี้แจง คอมเมนต์งาน หรือบอกปัญหา..." style="flex:1; padding:8px 12px; border:1px solid var(--border-color); border-radius:8px; font-size:13px; height:45px; resize:none; font-family:var(--font-family)"></textarea>
+        <textarea id="newCommentText" placeholder="เขียนข้อความคุยงาน สอบถาม หรือคอมเมนต์งานชิ้นนี้..." style="flex:1; padding:8px 12px; border:1px solid var(--border-color); border-radius:8px; font-size:13px; height:45px; resize:none; font-family:var(--font-family)"></textarea>
         <button class="btn btn-primary" onclick="postTaskCommentClick()" style="padding:10px 16px; font-size:13px"><i class="fa-solid fa-paper-plane"></i> ส่ง</button>
       </div>
     </div>
@@ -441,6 +605,27 @@
 <div class="img-modal-bg" id="imagePreviewModal" onclick="closeImageModal()">
   <span class="close-img">&times;</span>
   <img id="previewImageSrc" src="" alt="ขยายรูปภาพ" onclick="event.stopPropagation()">
+</div>
+
+<!-- D. QUOTATION PRINT PREVIEW MODAL -->
+<div class="modal-bg" id="quotationPrintModal">
+  <div class="modal" style="max-width:800px; background:#f1f5f9; padding:15px;">
+    <div style="background:#fff; padding:10px; border-radius:8px; display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; border:1px solid var(--border-color);">
+      <div>
+        <strong style="color:var(--primary-red); font-size:14px;"><i class="fa-solid fa-file-pdf"></i> พิมพ์ / ดาวน์โหลดใบเสนอราคา (A4)</strong>
+      </div>
+      <div style="display:flex; gap:8px;">
+        <button class="btn btn-primary btn-sm" onclick="downloadQuotationPDF()"><i class="fa-solid fa-download"></i> ดาวน์โหลด PDF</button>
+        <button class="btn btn-ghost btn-sm" onclick="triggerQuotationPrint()"><i class="fa-solid fa-print"></i> พิมพ์</button>
+        <button class="btn btn-ghost btn-sm" onclick="closeQuotationPrintModal()">ปิด</button>
+      </div>
+    </div>
+    
+    <!-- Printable Paper -->
+    <div id="quotationPaper" style="background:#fff; padding:20mm 15mm; min-height:297mm; color:#000; font-family:'Inter', 'Mitr', sans-serif; box-shadow:0 4px 10px rgba(0,0,0,0.08); border-radius:4px; overflow:auto;">
+      <!-- Dynamic A4 content -->
+    </div>
+  </div>
 </div>
 
 <!-- Firebase scripts -->
