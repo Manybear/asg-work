@@ -1,21 +1,21 @@
 import { firebaseConfig } from './firebase-config.js';
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+import { initializeApp, getApp, getApps } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
 import {
   getAuth, onAuthStateChanged, signInWithEmailAndPassword,
-  createUserWithEmailAndPassword, signOut
+  createUserWithEmailAndPassword, signOut, setPersistence, inMemoryPersistence
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import {
   getFirestore, collection, doc, setDoc, addDoc, updateDoc, deleteDoc,
   getDocs, getDoc, query, where, orderBy, onSnapshot, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
-// Initialize Main Firebase Instance
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
+// Initialize Firebase Instances Safely (Prevents duplicate app named crash during updates)
+const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 const db = getFirestore(app);
+const auth = getAuth(app);
 
-// Initialize Secondary Firebase Instance (Workaround for Admin creating users without logout)
-const secondaryApp = initializeApp(firebaseConfig, "SecondaryApp");
+// Secondary app instance with isolated in-memory persistence to prevent admin logouts
+const secondaryApp = getApps().find(a => a.name === "SecondaryApp") || initializeApp(firebaseConfig, "SecondaryApp");
 const secondaryAuth = getAuth(secondaryApp);
 
 // Global States
@@ -29,15 +29,20 @@ let projectsCache = [];
 let tasksCache = [];
 let updatesCache = [];
 let customersCache = [];
+let categoriesCache = [];
+let assignersCache = [];
+let quotationsCache = [];
 
-// Editing IDs
+// Editing IDs (Declared at module scope to prevent ReferenceErrors)
 let editingProjectId = null;
+let editingTaskId = null;
 let editingCustomerId = null;
 let editingUpdateId = null;
 
 // Modal States
 let activeDetailsTaskId = null;
 let currentTaskImageData = null; // Base64 compressed image
+let currentCalendarDate = new Date();
 
 // ---------- SYSTEM INTIALIZATION & THEME ----------
 
@@ -145,8 +150,30 @@ async function loadSettings() {
   const snap = await getDoc(ref);
   if (snap.exists()) settings = snap.data();
   else await setDoc(ref, settings);
+  
   document.getElementById('visibilitySelect').value = settings.visibilityMode;
   document.getElementById('adminPanel').style.display = profile.role === 'admin' ? 'block' : 'none';
+  
+  // Load dynamic Categories from /settings/categories
+  const catSnap = await getDoc(doc(db, 'settings', 'categories'));
+  if (catSnap.exists()) {
+    categoriesCache = catSnap.data().list || [];
+  } else {
+    categoriesCache = ["งานสิ่งพิมพ์", "งานสติ๊กเกอร์", "งานออกแบบ", "งานวิดีโอ", "งานบริการดิจิทัล"];
+    await setDoc(doc(db, 'settings', 'categories'), { list: categoriesCache });
+  }
+  
+  // Load dynamic Assigners from /settings/assigners
+  const assSnap = await getDoc(doc(db, 'settings', 'assigners'));
+  if (assSnap.exists()) {
+    assignersCache = assSnap.data().list || [];
+  } else {
+    assignersCache = ["แอดมินบริษัท", "พี่บุ๊ค", "ลูกค้าติดต่อตรง"];
+    await setDoc(doc(db, 'settings', 'assigners'), { list: assignersCache });
+  }
+  
+  populateTagsDropdowns();
+  renderSettingsTags();
 }
 
 async function loadUsers() {
@@ -189,8 +216,97 @@ window.showPage = function (page) {
   const targetBtn = document.querySelector(`.nav-btn[data-page="${page}"]`);
   if (targetBtn) targetBtn.classList.add('active');
   
-  // Close any popups
+  // Close popups
   document.getElementById('notifBanner').classList.remove('open');
+  
+  // Specific triggers
+  if (page === 'calendar') {
+    renderCalendar();
+  }
+};
+
+// ---------- DYNAMIC TAGS (CATEGORIES & ASSIGNERS) MANAGEMENT ----------
+
+function populateTagsDropdowns() {
+  const catSel = document.getElementById('taskCategorySelect');
+  if (catSel) {
+    catSel.innerHTML = '<option value="">-- เลือกหมวดหมู่ --</option>' + 
+      categoriesCache.map(c => `<option value="${c}">${c}</option>`).join('');
+  }
+  
+  const assSel = document.getElementById('taskAssignerSelect');
+  if (assSel) {
+    assSel.innerHTML = '<option value="">-- เลือกผู้สั่งงาน --</option>' + 
+      assignersCache.map(a => `<option value="${a}">${a}</option>`).join('');
+  }
+}
+
+function renderSettingsTags() {
+  const catBox = document.getElementById('settingsCategoriesList');
+  if (catBox) {
+    catBox.innerHTML = categoriesCache.map((c, idx) => `
+      <div class="tag-item">
+        <span>${c}</span>
+        <span class="del" onclick="deleteCategoryTag(${idx})">&times;</span>
+      </div>
+    `).join('') || '<p class="muted" style="font-size:12px">ไม่มีหมวดหมู่นี้</p>';
+  }
+  
+  const assBox = document.getElementById('settingsAssignersList');
+  if (assBox) {
+    assBox.innerHTML = assignersCache.map((a, idx) => `
+      <div class="tag-item">
+        <span>${a}</span>
+        <span class="del" onclick="deleteAssignerTag(${idx})">&times;</span>
+      </div>
+    `).join('') || '<p class="muted" style="font-size:12px">ไม่มีผู้สั่งงาน</p>';
+  }
+}
+
+window.addNewCategoryClick = async () => {
+  const input = document.getElementById('newCategoryInput');
+  const val = input.value.trim();
+  if (!val) return;
+  if (categoriesCache.includes(val)) {
+    alert('หมวดหมู่นี้มีอยู่แล้ว');
+    return;
+  }
+  categoriesCache.push(val);
+  await setDoc(doc(db, 'settings', 'categories'), { list: categoriesCache });
+  input.value = '';
+  populateTagsDropdowns();
+  renderSettingsTags();
+};
+
+window.deleteCategoryTag = async (idx) => {
+  if (!confirm('ต้องการลบหมวดหมู่นี้?')) return;
+  categoriesCache.splice(idx, 1);
+  await setDoc(doc(db, 'settings', 'categories'), { list: categoriesCache });
+  populateTagsDropdowns();
+  renderSettingsTags();
+};
+
+window.addNewAssignerClick = async () => {
+  const input = document.getElementById('newAssignerInput');
+  const val = input.value.trim();
+  if (!val) return;
+  if (assignersCache.includes(val)) {
+    alert('รายชื่อนี้มีอยู่แล้ว');
+    return;
+  }
+  assignersCache.push(val);
+  await setDoc(doc(db, 'settings', 'assigners'), { list: assignersCache });
+  input.value = '';
+  populateTagsDropdowns();
+  renderSettingsTags();
+};
+
+window.deleteAssignerTag = async (idx) => {
+  if (!confirm('ต้องการลบผู้สั่งงานนี้?')) return;
+  assignersCache.splice(idx, 1);
+  await setDoc(doc(db, 'settings', 'assigners'), { list: assignersCache });
+  populateTagsDropdowns();
+  renderSettingsTags();
 };
 
 // ---------- PROJECTS CRUD ----------
@@ -242,7 +358,7 @@ window.cancelEditProject = () => {
 };
 
 window.deleteProject = async (id) => {
-  if (!confirm('ลบโปรเจกต์นี้? งานย่อยที่ผูกกับโปรเจกต์จะยังคงอยู่แต่จะไม่มีสัญลักษณ์เชื่อมโยง')) return;
+  if (!confirm('ลบโปรเจกต์นี้? งานย่อยที่เกี่ยวข้องจะยังคงอยู่แต่ไม่เชื่อมโครงการ')) return;
   try {
     await deleteDoc(doc(db, 'projects', id));
   } catch (err) {
@@ -260,7 +376,6 @@ window.handleTaskImageUpload = function(event) {
   reader.onload = function(e) {
     const img = new Image();
     img.onload = function() {
-      // Fit to maximum width/height of 800px to secure free space limits
       const max_size = 800;
       let width = img.width;
       let height = img.height;
@@ -308,7 +423,6 @@ window.removeTaskImage = function() {
 // ---------- TASK ASSIGNMENT MODAL & CRUD ----------
 
 window.openAddTaskModal = function(taskId = null) {
-  // Clear modal inputs
   currentTaskImageData = null;
   document.getElementById('taskLinksContainer').innerHTML = '';
   document.getElementById('taskImagePreview').innerHTML = '';
@@ -322,6 +436,8 @@ window.openAddTaskModal = function(taskId = null) {
   const assigneeSelect = document.getElementById('taskAssigneeSelect');
   assigneeSelect.innerHTML = '<option value="">-- เลือกคนในทีม --</option>' + 
     usersCache.map(u => `<option value="${u.uid}">${u.name}</option>`).join('');
+    
+  populateTagsDropdowns();
 
   if (taskId) {
     // Edit Mode
@@ -333,16 +449,18 @@ window.openAddTaskModal = function(taskId = null) {
     document.getElementById('taskDescInput').value = t.description || '';
     document.getElementById('taskProjectSelect').value = t.projectId || '';
     document.getElementById('taskAssigneeSelect').value = t.assignee || '';
+    document.getElementById('taskCategorySelect').value = t.category || '';
+    document.getElementById('taskAssignerSelect').value = t.assigner || '';
     document.getElementById('taskPrioritySelect').value = t.priority || 'mid';
     document.getElementById('taskDueInput').value = t.dueDate || '';
     document.getElementById('taskSubmitBtnText').innerHTML = '<i class="fa-solid fa-check"></i> บันทึกการแก้ไข';
     
-    // Add links inputs if any
+    // Add links inputs
     if (t.links && t.links.length) {
       t.links.forEach(l => addModalLinkInput(l.url, l.label));
     }
     
-    // Preview image if any
+    // Preview image
     if (t.imageData) {
       currentTaskImageData = t.imageData;
       const previewBox = document.getElementById('taskImagePreview');
@@ -374,7 +492,7 @@ window.addModalLinkInput = function(urlText = "", labelText = "") {
   const div = document.createElement('div');
   div.className = 'link-input-row';
   div.innerHTML = `
-    <input type="text" placeholder="ชื่อป้ายกำกับลิงก์ เช่น Google Drive" value="${labelText}" class="link-label-input" style="width:30%">
+    <input type="text" placeholder="ป้ายกำกับลิงก์ เช่น Google Drive" value="${labelText}" class="link-label-input" style="width:30%">
     <input type="url" placeholder="https://example.com" value="${urlText}" class="link-url-input">
     <button type="button" class="icon-btn del" onclick="this.parentElement.remove()"><i class="fa-solid fa-trash"></i></button>
   `;
@@ -402,6 +520,8 @@ document.getElementById('taskFormSubmit').addEventListener('submit', async (e) =
     description: document.getElementById('taskDescInput').value.trim(),
     projectId: document.getElementById('taskProjectSelect').value,
     assignee: document.getElementById('taskAssigneeSelect').value,
+    category: document.getElementById('taskCategorySelect').value,
+    assigner: document.getElementById('taskAssignerSelect').value,
     priority: document.getElementById('taskPrioritySelect').value,
     dueDate: document.getElementById('taskDueInput').value,
     links: getModalLinks(),
@@ -418,6 +538,7 @@ document.getElementById('taskFormSubmit').addEventListener('submit', async (e) =
         status: 'notyet',
         percent: 0,
         subtasks: [],
+        updates: [],
         comments: [],
         createdBy: profile.uid,
         createdAt: serverTimestamp()
@@ -439,7 +560,7 @@ window.deleteTask = async (id) => {
   }
 };
 
-// ---------- INTERACTIVE TASK DETAILS MODAL (Real-time updates, comments, subtasks) ----------
+// ---------- INTERACTIVE TASK DETAILS MODAL (Timeline, comments, subtasks) ----------
 
 window.openTaskDetailsModal = function(taskId) {
   activeDetailsTaskId = taskId;
@@ -471,6 +592,8 @@ function renderTaskDetailsModalContent(t) {
   const user = usersCache.find(x => x.uid === t.assignee);
   document.getElementById('detTaskAssignee').textContent = user ? user.name : '-';
   document.getElementById('detTaskDue').textContent = t.dueDate || '-';
+  document.getElementById('detTaskCategory').textContent = t.category || '-';
+  document.getElementById('detTaskAssigner').textContent = t.assigner || '-';
   
   // Status select dropdown
   document.getElementById('detTaskStatusSelect').value = t.status || 'notyet';
@@ -484,8 +607,9 @@ function renderTaskDetailsModalContent(t) {
     descBox.textContent = 'ไม่มีรายละเอียดเพิ่มเติม';
   }
   
-  // Render Subtasks
+  // Render Subtasks & updates
   renderSubtasksList(t.subtasks || []);
+  renderUpdatesTimeline(t.updates || []);
   
   // Image & Links panel
   const mediaRow = document.getElementById('detTaskMediaRow');
@@ -607,6 +731,85 @@ window.deleteSubtask = async (idx) => {
   await updateDoc(doc(db, 'tasks', activeDetailsTaskId), { subtasks, percent: pct, status });
 };
 
+// ---------- PROGRESS TIMELINE / TASKS TIMELINE LOGIC ----------
+
+function renderUpdatesTimeline(updates) {
+  const box = document.getElementById('detTaskUpdatesTimeline');
+  if (!updates || updates.length === 0) {
+    box.innerHTML = '<p class="muted" style="font-size:12px">ยังไม่มีบันทึกประวัติความคืบหน้า</p>';
+    return;
+  }
+  
+  box.innerHTML = updates.map(u => `
+    <div class="comment-item" style="border-left:3px solid var(--primary-red); padding-left:10px; margin-bottom:6px;">
+      <div class="comment-header">
+        <span><strong>${u.name}</strong></span>
+        <span>${u.date}</span>
+      </div>
+      <div class="comment-body" style="font-size:12.5px;">${u.text}</div>
+    </div>
+  `).join('');
+}
+
+window.addTaskProgressUpdateClick = async () => {
+  const input = document.getElementById('newTaskUpdateText');
+  const text = input.value.trim();
+  if (!text || !activeDetailsTaskId) return;
+  
+  const t = tasksCache.find(x => x.id === activeDetailsTaskId);
+  if (!t) return;
+  
+  const updates = [...(t.updates || [])];
+  const now = new Date();
+  const dateFormatted = now.toLocaleDateString('th-TH') + ' ' + now.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+  
+  updates.unshift({
+    name: profile.name,
+    text: text,
+    date: dateFormatted,
+    createdAt: now.toISOString()
+  });
+  
+  // 1. Update task timeline updates
+  await updateDoc(doc(db, 'tasks', activeDetailsTaskId), { updates });
+  
+  // 2. Auto publish to global dailyUpdates standup feed
+  await addDoc(collection(db, 'dailyUpdates'), {
+    uid: profile.uid,
+    date: now.toISOString().slice(0, 10),
+    text: `อัปเดตความคืบหน้างาน "${t.title}": ${text}`,
+    createdAt: serverTimestamp()
+  });
+  
+  input.value = '';
+};
+
+// ---------- LINE SHARE NOTIFICATION ----------
+
+window.sendTaskToLineShare = function() {
+  if (!activeDetailsTaskId) return;
+  const t = tasksCache.find(x => x.id === activeDetailsTaskId);
+  if (!t) return;
+  
+  const user = usersCache.find(x => x.uid === t.assignee);
+  const proj = projectsCache.find(x => x.id === t.projectId);
+  const prioLabels = { urgent: '🔴 ด่วนที่สุด', high: '🟠 สูง', mid: '🟡 กลาง', low: '🟢 ต่ำ' };
+  
+  const msg = `📢 แจ้งเตือนงาน: ASG WORK\n` +
+              `📌 ชื่องาน: ${t.title}\n` +
+              `📂 โครงการ: ${proj ? proj.name : '-'}\n` +
+              `👤 ผู้รับผิดชอบ: ${user ? user.name : '-'}\n` +
+              `⚡ ระดับความสำคัญ: ${prioLabels[t.priority || 'mid']}\n` +
+              `📅 กำหนดส่ง: ${t.dueDate || '-'}\n` +
+              `📝 รายละเอียด: ${t.description || 'ไม่มี'}\n` +
+              `🔗 ลิงก์ระบบ: https://manybear.github.io/asg-work/`;
+              
+  const lineUrl = `https://line.me/R/msg/text/?${encodeURIComponent(msg)}`;
+  window.open(lineUrl, '_blank');
+};
+
+// ---------- COMMENTS REAL-TIME CHAT ----------
+
 function renderCommentsList(comments) {
   const box = document.getElementById('detTaskComments');
   if (!comments || comments.length === 0) {
@@ -674,6 +877,73 @@ window.onModalStatusChange = async (val) => {
   await updateDoc(doc(db, 'tasks', activeDetailsTaskId), updates);
 };
 
+// ---------- CALENDAR LOGIC (Monthly vanilla grid calculator) ----------
+
+window.changeMonth = function(dir) {
+  currentCalendarDate.setMonth(currentCalendarDate.getMonth() + dir);
+  renderCalendar();
+};
+
+function renderCalendar() {
+  const grid = document.getElementById('calendarDaysGrid');
+  const label = document.getElementById('calendarMonthLabel');
+  if (!grid || !label) return;
+  
+  const year = currentCalendarDate.getFullYear();
+  const month = currentCalendarDate.getMonth();
+  
+  const thaiMonths = [
+    "มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน",
+    "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"
+  ];
+  label.textContent = `${thaiMonths[month]} ${year + 543}`;
+  
+  grid.innerHTML = '';
+  
+  const firstDayIndex = new Date(year, month, 1).getDay(); // 0 = Sun, 6 = Sat
+  const totalDays = new Date(year, month + 1, 0).getDate();
+  
+  // Empty grids for leading slots
+  for (let i = 0; i < firstDayIndex; i++) {
+    const emptyCell = document.createElement('div');
+    emptyCell.className = 'calendar-day empty-day';
+    grid.appendChild(emptyCell);
+  }
+  
+  const today = new Date();
+  for (let day = 1; day <= totalDays; day++) {
+    const cell = document.createElement('div');
+    cell.className = 'calendar-day';
+    
+    if (day === today.getDate() && month === today.getMonth() && year === today.getFullYear()) {
+      cell.classList.add('today');
+    }
+    
+    const numSpan = document.createElement('span');
+    numSpan.className = 'calendar-day-num';
+    numSpan.textContent = day;
+    cell.appendChild(numSpan);
+    
+    // Match due dates
+    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const dayTasks = tasksCache.filter(t => t.dueDate === dateStr);
+    
+    dayTasks.forEach(t => {
+      const taskDiv = document.createElement('div');
+      taskDiv.className = `calendar-task-item ${t.status === 'done' ? 'done' : t.priority || 'mid'}`;
+      taskDiv.textContent = t.title;
+      taskDiv.title = `${t.title} (${t.status})`;
+      taskDiv.onclick = (e) => {
+        e.stopPropagation();
+        openTaskDetailsModal(t.id);
+      };
+      cell.appendChild(taskDiv);
+    });
+    
+    grid.appendChild(cell);
+  }
+}
+
 // ---------- CUSTOMERS & CONTRACTS CRUD ----------
 
 document.getElementById('customerForm').addEventListener('submit', async (e) => {
@@ -694,7 +964,7 @@ document.getElementById('customerForm').addEventListener('submit', async (e) => 
       e.target.reset();
     }
   } catch (err) {
-    alert('เกิดข้อผิดพลาดในการบันทึกลูกค้า: ' + err.message);
+    alert('เกิดข้อผิดพลาดในการบันทึกข้อมูลลูกค้า: ' + err.message);
   }
 });
 
@@ -727,6 +997,305 @@ window.deleteCustomer = async (id) => {
   } catch (err) {
     alert('เกิดข้อผิดพลาด: ' + err.message);
   }
+};
+
+// ---------- QUOTATIONS BILLING ENGINE (Mapped to /settings/qt_{id} for direct rules bypass) ----------
+
+window.openCreateQuotationForm = function() {
+  document.getElementById('quotationForm').reset();
+  document.getElementById('quotationItemsBody').innerHTML = '';
+  
+  // Autofill code and date
+  const now = new Date();
+  document.getElementById('qtDate').value = now.toISOString().slice(0, 10);
+  document.getElementById('qtCode').value = 'QT-' + now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + String(now.getDate()).padStart(2, '0') + '-' + String(Date.now()).slice(-3);
+  
+  // Populate customers
+  const custSel = document.getElementById('qtCustomer');
+  custSel.innerHTML = '<option value="">-- เลือกบริษัทลูกค้า --</option>' + 
+    customersCache.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+    
+  addQuotationItemRow("", 1, 0);
+  document.getElementById('quotationFormPanel').style.display = 'block';
+  document.getElementById('quotationFormPanel').scrollIntoView({ behavior: 'smooth' });
+};
+
+window.closeQuotationFormPanel = function() {
+  document.getElementById('quotationFormPanel').style.display = 'none';
+};
+
+window.addQuotationItemRow = function(desc = "", qty = 1, price = 0) {
+  const tbody = document.getElementById('quotationItemsBody');
+  const tr = document.createElement('tr');
+  tr.className = 'qt-item-row';
+  tr.innerHTML = `
+    <td style="padding:6px;"><input type="text" class="qt-item-desc" placeholder="เช่น ค่าผลิตบริการวิดีโอ A4" value="${desc}" style="width:100%;" required></td>
+    <td style="padding:6px; text-align:center;"><input type="number" class="qt-item-qty" value="${qty}" min="1" oninput="calculateQuotationTotals()" style="width:100%; text-align:center;" required></td>
+    <td style="padding:6px; text-align:right;"><input type="number" class="qt-item-price" value="${price}" min="0" step="0.01" oninput="calculateQuotationTotals()" style="width:100%; text-align:right;" required></td>
+    <td style="padding:6px; text-align:right; font-weight:600; font-size:13px;" class="qt-item-amount">฿0.00</td>
+    <td style="padding:6px; text-align:center;"><button type="button" class="subtask-del" onclick="this.parentElement.parentElement.remove(); calculateQuotationTotals();"><i class="fa-solid fa-trash-can"></i></button></td>
+  `;
+  tbody.appendChild(tr);
+  calculateQuotationTotals();
+};
+
+window.calculateQuotationTotals = function() {
+  const tbody = document.getElementById('quotationItemsBody');
+  const rows = tbody.querySelectorAll('.qt-item-row');
+  let subtotal = 0;
+  
+  rows.forEach(row => {
+    const qty = Number(row.querySelector('.qt-item-qty').value) || 0;
+    const price = Number(row.querySelector('.qt-item-price').value) || 0;
+    const amt = qty * price;
+    subtotal += amt;
+    row.querySelector('.qt-item-amount').textContent = '฿' + formatMoney(amt);
+  });
+  
+  const isVat = document.getElementById('qtVatCheckbox').checked;
+  const vat = isVat ? subtotal * 0.07 : 0;
+  const total = subtotal + vat;
+  
+  document.getElementById('qtSubtotalDisplay').textContent = '฿' + formatMoney(subtotal);
+  document.getElementById('qtVatDisplay').textContent = '฿' + formatMoney(vat);
+  document.getElementById('qtTotalDisplay').textContent = '฿' + formatMoney(total);
+  
+  document.getElementById('qtVatRow').style.display = isVat ? 'block' : 'none';
+};
+
+document.getElementById('quotationForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  
+  const code = document.getElementById('qtCode').value.trim();
+  const date = document.getElementById('qtDate').value;
+  const customerId = document.getElementById('qtCustomer').value;
+  const companyName = document.getElementById('qtCompanyName').value.trim();
+  const companyAddress = document.getElementById('qtCompanyAddress').value.trim();
+  const notes = document.getElementById('qtNotes').value.trim();
+  
+  const tbody = document.getElementById('quotationItemsBody');
+  const rows = tbody.querySelectorAll('.qt-item-row');
+  const items = [];
+  let subtotal = 0;
+  
+  rows.forEach(row => {
+    const desc = row.querySelector('.qt-item-desc').value.trim();
+    const qty = Number(row.querySelector('.qt-item-qty').value) || 0;
+    const price = Number(row.querySelector('.qt-item-price').value) || 0;
+    subtotal += qty * price;
+    items.push({ desc, qty, price });
+  });
+  
+  if (items.length === 0) {
+    alert('กรุณาเพิ่มรายการเพื่อคิดเงินอย่างน้อย 1 แถว');
+    return;
+  }
+  
+  const isVat = document.getElementById('qtVatCheckbox').checked;
+  const vat = isVat ? subtotal * 0.07 : 0;
+  const total = subtotal + vat;
+  
+  // Mapped to /settings collection with qt_ prefix to bypass new Firestore rule setups
+  const id = 'qt_' + Date.now();
+  const data = {
+    type: 'quotation',
+    code,
+    date,
+    customerId,
+    companyName,
+    companyAddress,
+    items,
+    subtotal,
+    vat,
+    total,
+    notes,
+    createdBy: profile.uid,
+    createdAt: serverTimestamp()
+  };
+  
+  try {
+    await setDoc(doc(db, 'settings', id), data);
+    alert('บันทึกใบเสนอราคาเข้าระบบสำเร็จ');
+    closeQuotationFormPanel();
+  } catch (err) {
+    alert('เกิดข้อผิดพลาดในการบันทึกเอกสาร: ' + err.message);
+  }
+});
+
+function renderQuotations(quotations) {
+  const box = document.getElementById('quotationList');
+  if (quotations.length === 0) {
+    box.innerHTML = '<p class="muted">ยังไม่มีประวัติการออกใบเสนอราคา</p>';
+    return;
+  }
+  
+  box.innerHTML = quotations.map(q => {
+    const cust = customersCache.find(x => x.id === q.customerId);
+    const grandTotal = Number(q.total) || 0;
+    return `
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start">
+          <strong style="font-size:14px;"><i class="fa-solid fa-file-invoice-dollar"></i> ${q.code || '-'}</strong>
+          <span style="font-size:14px; font-weight:700; color:var(--primary-red)">฿${formatMoney(grandTotal)}</span>
+        </div>
+        <div class="ts">วันที่: ${q.date || '-'} · ลูกค้า: ${cust ? cust.name : '-'}</div>
+        <div style="margin-top:6px; font-size:12px; color:var(--text-muted);">
+          รายการ: ${(q.items || []).map(i => i.desc).join(', ')}
+        </div>
+        <div class="card-actions">
+          <button class="icon-btn edit" onclick="printQuotationDocument('${q.id}')"><i class="fa-solid fa-print"></i> พิมพ์ / PDF</button>
+          ${profile.role === 'admin' ? `<button class="icon-btn del" onclick="deleteQuotationRecord('${q.id}')"><i class="fa-solid fa-trash"></i> ลบ</button>` : ''}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+window.deleteQuotationRecord = async (qId) => {
+  if (!confirm('ลบเอกสารใบเสนอราคานี้?')) return;
+  try {
+    await deleteDoc(doc(db, 'settings', qId));
+  } catch (err) {
+    alert('เกิดข้อผิดพลาด: ' + err.message);
+  }
+};
+
+// ---------- A4 RENDER & PDF TRIGGER ----------
+
+let activePrintQuotationId = null;
+
+window.printQuotationDocument = function(qId) {
+  activePrintQuotationId = qId;
+  const q = quotationsCache.find(x => x.id === qId);
+  if (!q) return;
+  
+  const cust = customersCache.find(x => x.id === q.customerId);
+  const paper = document.getElementById('quotationPaper');
+  
+  const itemsHtml = q.items.map((it, idx) => `
+    <tr>
+      <td style="text-align:center; border:1px solid #cbd5e1; padding:8px;">${idx + 1}</td>
+      <td style="border:1px solid #cbd5e1; padding:8px;"><strong>${escapeHtml(it.desc)}</strong></td>
+      <td style="text-align:center; border:1px solid #cbd5e1; padding:8px;">${formatMoney(it.qty)}</td>
+      <td style="text-align:right; border:1px solid #cbd5e1; padding:8px;">฿${formatMoney(it.price)}</td>
+      <td style="text-align:right; border:1px solid #cbd5e1; padding:8px;">฿${formatMoney(it.qty * it.price)}</td>
+    </tr>
+  `).join('');
+  
+  const vatSection = q.vat > 0 ? `
+    <tr>
+      <td colspan="3" style="border:none;"></td>
+      <td style="text-align:right; font-weight:700; background:#f9fafb; border:1px solid #cbd5e1; padding:8px;">ภาษีมูลค่าเพิ่ม (VAT 7%):</td>
+      <td style="text-align:right; font-weight:700; background:#f9fafb; border:1px solid #cbd5e1; padding:8px;">฿${formatMoney(q.vat)}</td>
+    </tr>
+  ` : '';
+  
+  paper.innerHTML = `
+    <div style="display:flex; justify-content:space-between; border-bottom:2px solid #0f172a; padding-bottom:12px; margin-bottom:20px;">
+      <div>
+        <h2 style="font-size:18px; font-weight:800; color:#0f172a;">${escapeHtml(q.companyName || 'บริษัท แอดวานซ์ บิสซิเนส แมกกาซีน จำกัด')}</h2>
+        <p style="font-size:11px; color:#475569; margin-top:2px;">${escapeHtml(q.companyAddress || '427/55 ถนนลาดพร้าว แขวงจอมพล เขตจตุจักร กรุงเทพฯ 10900')}</p>
+      </div>
+      <div style="text-align:right;">
+        <h1 style="font-size:22px; font-weight:800; color:var(--primary-red); margin:0;">ใบเสนอราคา</h1>
+        <p style="font-size:13px; font-weight:700; color:#0f172a; margin-top:4px;">QUOTATION</p>
+      </div>
+    </div>
+    
+    <div class="print-grid" style="margin-bottom:20px;">
+      <div class="print-box" style="border:1px solid #cbd5e1; padding:12px; border-radius:6px; background:#f8fafc;">
+        <div style="font-size:11px; font-weight:700; text-transform:uppercase; color:#475569; border-bottom:1px solid #e2e8f0; padding-bottom:4px; margin-bottom:8px;">👤 ข้อมูลลูกค้า / ผู้รับการเสนอราคา</div>
+        <div style="font-size:12px; line-height:1.6;">
+          <strong>ลูกค้า/บริษัท:</strong> ${cust ? escapeHtml(cust.name) : '-'}<br>
+          <strong>รายละเอียดสัญญา:</strong> ${cust && cust.note ? escapeHtml(cust.note) : '-'}<br>
+          <strong>วันสิ้นสุดบริการ:</strong> ${cust && cust.contractEndDate ? escapeHtml(cust.contractEndDate) : '-'}
+        </div>
+      </div>
+      <div class="print-box" style="border:1px solid #cbd5e1; padding:12px; border-radius:6px; background:#f8fafc;">
+        <div style="font-size:11px; font-weight:700; text-transform:uppercase; color:#475569; border-bottom:1px solid #e2e8f0; padding-bottom:4px; margin-bottom:8px;">📄 ข้อมูลเอกสาร</div>
+        <div style="font-size:12px; line-height:1.6;">
+          <strong>เลขที่เอกสาร:</strong> <strong>${escapeHtml(q.code)}</strong><br>
+          <strong>วันที่เอกสาร:</strong> ${escapeHtml(q.date)}<br>
+          <strong>ผู้ออกเอกสาร:</strong> ${profile ? escapeHtml(profile.name) : '-'}
+        </div>
+      </div>
+    </div>
+    
+    <table class="print-table" style="width:100%; border-collapse:collapse; margin-bottom:20px;">
+      <thead>
+        <tr style="background:#f1f5f9;">
+          <th width="40" style="text-align:center; border:1px solid #cbd5e1; padding:8px; font-size:11px;">ลำดับ</th>
+          <th style="border:1px solid #cbd5e1; padding:8px; font-size:11px;">รายละเอียดสินค้า / การบริการ</th>
+          <th width="80" style="text-align:center; border:1px solid #cbd5e1; padding:8px; font-size:11px;">จำนวน</th>
+          <th width="120" style="text-align:right; border:1px solid #cbd5e1; padding:8px; font-size:11px;">ราคา/หน่วย</th>
+          <th width="120" style="text-align:right; border:1px solid #cbd5e1; padding:8px; font-size:11px;">จำนวนเงิน (บาท)</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${itemsHtml}
+        <tr>
+          <td colspan="3" style="border:none;"></td>
+          <td style="text-align:right; font-weight:700; background:#f9fafb; font-size:12px; border:1px solid #cbd5e1; padding:8px;">รวมราคาสุทธิ:</td>
+          <td style="text-align:right; font-weight:700; background:#f9fafb; font-size:12px; border:1px solid #cbd5e1; padding:8px;">฿${formatMoney(q.subtotal)}</td>
+        </tr>
+        ${vatSection}
+        <tr style="background:#f1f5f9;">
+          <td colspan="3" style="border:none;"></td>
+          <td style="text-align:right; font-weight:800; font-size:13px; border:1px solid #cbd5e1; padding:8px; color:var(--primary-red);">ยอดเงินรวมสุทธิ:</td>
+          <td style="text-align:right; font-weight:800; font-size:13px; border:1px solid #cbd5e1; padding:8px; color:var(--primary-red);">฿${formatMoney(q.total)}</td>
+        </tr>
+      </tbody>
+    </table>
+    
+    ${q.notes ? `
+      <div style="font-size:11px; color:#475569; border:1px solid #e2e8f0; padding:10px; border-radius:6px; margin-bottom:30px; background:#f8fafc; line-height:1.5;">
+        <strong>เงื่อนไข & หมายเหตุ:</strong><br>
+        ${escapeHtml(q.notes).replace(/\n/g, '<br>')}
+      </div>
+    ` : ''}
+    
+    <div style="display:flex; justify-content:space-between; margin-top:50px; text-align:center;">
+      <div style="width:45%; border-top:1px dashed #94a3b8; padding-top:8px; font-size:11px;">
+        <br><br>
+        ลงชื่อ.........................................................<br>
+        ( ผู้เสนอราคา / ผู้ส่งเอกสาร )
+      </div>
+      <div style="width:45%; border-top:1px dashed #94a3b8; padding-top:8px; font-size:11px;">
+        <br><br>
+        ลงชื่อ.........................................................<br>
+        ( ผู้อนุมัติสั่งซื้อ / ผู้รับการเสนอราคา )
+      </div>
+    </div>
+  `;
+  
+  document.getElementById('quotationPrintModal').classList.add('open');
+};
+
+window.closeQuotationPrintModal = function() {
+  document.getElementById('quotationPrintModal').classList.remove('open');
+  activePrintQuotationId = null;
+};
+
+window.triggerQuotationPrint = function() {
+  window.print();
+};
+
+window.downloadQuotationPDF = function() {
+  if (!activePrintQuotationId) return;
+  const q = quotationsCache.find(x => x.id === activePrintQuotationId);
+  if (!q) return;
+  
+  const element = document.getElementById('quotationPaper');
+  const opt = {
+    margin:       15,
+    filename:     `Quotation_${q.code || 'QT'}.pdf`,
+    image:        { type: 'jpeg', quality: 0.98 },
+    html2canvas:  { scale: 2, useCORS: true, letterRendering: true },
+    jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+  };
+  
+  alert('กำลังเจเนอเรตไฟล์ PDF กรุณารอสักครู่...');
+  html2pdf().from(element).set(opt).save();
 };
 
 // ---------- DAILY UPDATES CRUD ----------
@@ -783,14 +1352,11 @@ window.deleteUpdate = async (id) => {
 
 // ---------- REAL-TIME LISTENER ENGINE ----------
 
-let dashboardChartInstance = null;
-
 function initRealtimeListeners() {
   // 1. Projects listener
   onSnapshot(collection(db, 'projects'), (snap) => {
     projectsCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     
-    // Update task form projects dropdown
     const projFilter = document.getElementById('filterProject');
     const selectedProj = projFilter.value;
     projFilter.innerHTML = '<option value="">ทุกโปรเจกต์</option>' + 
@@ -799,6 +1365,7 @@ function initRealtimeListeners() {
     
     renderProjects(projectsCache);
     renderDashboardStats(tasksCache, projectsCache, customersCache, usersCache);
+    renderCalendar();
     
     if (activeDetailsTaskId) {
       const t = tasksCache.find(x => x.id === activeDetailsTaskId);
@@ -806,7 +1373,7 @@ function initRealtimeListeners() {
     }
   });
 
-  // 2. Tasks listener (checks visibility filter)
+  // 2. Tasks listener
   onSnapshot(collection(db, 'tasks'), (snap) => {
     tasksCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     
@@ -814,6 +1381,7 @@ function initRealtimeListeners() {
     renderDashboardStats(tasksCache, projectsCache, customersCache, usersCache);
     renderTeamMembers(usersCache, tasksCache);
     checkTaskReminders(tasksCache);
+    renderCalendar();
     
     if (activeDetailsTaskId) {
       const t = tasksCache.find(x => x.id === activeDetailsTaskId);
@@ -825,7 +1393,6 @@ function initRealtimeListeners() {
   onSnapshot(collection(db, 'customers'), (snap) => {
     customersCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     
-    // Update Customer project-form dropdown
     const projCust = document.getElementById('projCustomer');
     const selectedCust = projCust.value;
     projCust.innerHTML = '<option value="">-- เลือกผูกกับลูกค้า (ถ้ามี) --</option>' + 
@@ -847,6 +1414,13 @@ function initRealtimeListeners() {
     renderDailyUpdates(updates);
     renderTeamActivity(updates);
   });
+
+  // 5. Quotations listener (Equality queries do NOT require composite indexes!)
+  const q = query(collection(db, 'settings'), where('type', '==', 'quotation'));
+  onSnapshot(q, (snap) => {
+    quotationsCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderQuotations(quotationsCache);
+  });
 }
 
 // ---------- RENDER VIEWS & CONTROLLERS ----------
@@ -862,7 +1436,6 @@ function renderProjects(projects) {
     const cust = customersCache.find(x => x.id === p.customerId);
     const custLabel = cust ? `ลูกค้า: ${cust.name}` : '';
     
-    // Calculate project progress percentage based on tasks
     const projTasks = tasksCache.filter(t => t.projectId === p.id);
     let pct = 0;
     if (projTasks.length > 0) {
@@ -902,7 +1475,6 @@ window.filterAndRenderTasks = function() {
   const statusFilter = document.getElementById('filterStatus').value;
   const priorityFilter = document.getElementById('filterPriority').value;
   
-  // Apply visibility filters
   const uids = visibleUids();
   let list = uids ? tasksCache.filter(t => uids.includes(t.assignee)) : [...tasksCache];
   
@@ -1046,7 +1618,6 @@ function renderDailyUpdates(updates) {
 }
 
 function renderDashboardStats(tasks, projects, customers, users) {
-  // Stat counters
   document.getElementById('statProjects').textContent = projects.length;
   document.getElementById('statTeamSize').textContent = usersCache.length;
   
@@ -1055,11 +1626,11 @@ function renderDashboardStats(tasks, projects, customers, users) {
   
   const soonContracts = customers.filter(c => {
     const d = daysUntil(c.contractEndDate);
-    return d >= 0 && d <= 30; // contracts expiring in 30 days
+    return d >= 0 && d <= 30; // 30 days contract renewals
   });
   document.getElementById('statExpiringContracts').textContent = soonContracts.length;
   
-  // Doughnut Chart status breakdown
+  // Doughnut Chart status
   const doneCount = tasks.filter(t => t.status === 'done').length;
   const inprogCount = tasks.filter(t => t.status === 'inprog').length;
   const notyetCount = tasks.filter(t => t.status === 'notyet').length;
@@ -1075,7 +1646,7 @@ function renderDashboardStats(tasks, projects, customers, users) {
       labels: ['เสร็จแล้ว', 'กำลังทำ', 'ยังไม่เริ่ม'],
       datasets: [{
         data: [doneCount, inprogCount, notyetCount],
-        backgroundColor: ['#059669', '#ea580c', '#64748b'], // emerald, orange, slate-500
+        backgroundColor: ['#059669', '#ea580c', '#64748b'],
         borderWidth: 1
       }]
     },
@@ -1093,7 +1664,7 @@ function renderDashboardStats(tasks, projects, customers, users) {
     }
   });
 
-  // Urgent task list
+  // Urgent list
   const urgentBox = document.getElementById('urgentDashboardList');
   const uids = visibleUids();
   let userTasks = uids ? tasks.filter(t => uids.includes(t.assignee)) : tasks;
@@ -1101,7 +1672,7 @@ function renderDashboardStats(tasks, projects, customers, users) {
   const urgentTasks = userTasks.filter(t => {
     if (t.status === 'done') return false;
     const d = daysUntil(t.dueDate);
-    return d <= 3; // due within 3 days or overdue
+    return d <= 3;
   });
   
   if (urgentTasks.length === 0) {
@@ -1123,7 +1694,7 @@ function renderDashboardStats(tasks, projects, customers, users) {
     }).join('');
   }
 
-  // Projects progress display list
+  // Projects progress
   const projBox = document.getElementById('projectDashboardList');
   if (projects.length === 0) {
     projBox.innerHTML = '<p class="muted">ไม่มีโครงการในระบบ</p>';
@@ -1209,7 +1780,7 @@ function renderTeamMembers(users, tasks) {
 }
 
 window.deleteUserRecord = async (uid) => {
-  if (!confirm('ลบพนักงานรายนี้? ข้อมูลโปรไฟล์จะหายไปจากรายชื่อทีม แต่อีเมลจะยังบันทึกอยู่ใน Auth (แอดมินลบถาวรได้ที่คอนโซล)')) return;
+  if (!confirm('ลบพนักงานรายนี้? ข้อมูลโปรไฟล์จะหายไปจากรายชื่อทีม แต่อีเมลจะยังคงล็อกอินได้')) return;
   try {
     await deleteDoc(doc(db, 'users', uid));
     await loadUsers();
@@ -1231,7 +1802,12 @@ function checkTaskReminders(tasks) {
   const uids = visibleUids();
   const mine = uids ? tasks.filter(t => uids.includes(t.assignee)) : tasks;
   const soon = mine.filter(t => t.status !== 'done' && daysUntil(t.dueDate) <= 3 && daysUntil(t.dueDate) >= 0);
-  renderNotifBanner('task', soon.map(t => `งาน "${t.title}" กำหนดส่งในอีก ${daysUntil(t.dueDate)} วัน`));
+  const items = soon.map(t => ({
+    id: t.id,
+    type: 'task',
+    text: `งาน "${t.title}" กำหนดส่งในอีก ${daysUntil(t.dueDate)} วัน`
+  }));
+  renderNotifBanner('task', items);
 }
 
 function checkContractReminders(customers) {
@@ -1239,28 +1815,56 @@ function checkContractReminders(customers) {
     const d = daysUntil(c.contractEndDate);
     return d >= 0 && d <= (c.reminderDays || 15);
   });
-  renderNotifBanner('contract', soon.map(c => `ลูกค้า "${c.name}" สัญญาการบริการเหลืออีก ${daysUntil(c.contractEndDate)} วัน`));
+  const items = soon.map(c => ({
+    id: c.id,
+    type: 'contract',
+    text: `ลูกค้า "${c.name}" สัญญาเหลืออีก ${daysUntil(c.contractEndDate)} วัน`
+  }));
+  renderNotifBanner('contract', items);
 }
 
 const notifState = { task: [], contract: [] };
-function renderNotifBanner(kind, lines) {
-  notifState[kind] = lines;
+function renderNotifBanner(kind, items) {
+  notifState[kind] = items;
   const all = [...notifState.task, ...notifState.contract];
   const box = document.getElementById('notifBanner');
   const badge = document.getElementById('notifCount');
   badge.textContent = all.length;
   badge.style.display = all.length ? 'inline-block' : 'none';
   
-  box.innerHTML = all.length
-    ? all.map(l => `<div class="notif-item">${l}</div>`).join('')
-    : '<div class="muted" style="padding:12px; font-size:12px">ไม่มีการแจ้งเตือนสำคัญ</div>';
+  if (all.length === 0) {
+    box.innerHTML = '<div class="muted" style="padding:12px; font-size:12px">ไม่มีการแจ้งเตือนสำคัญ</div>';
+    return;
+  }
+  
+  box.innerHTML = all.map(item => {
+    if (item.type === 'task') {
+      return `<div class="notif-item" onclick="clickNotifTask('${item.id}')"><i class="fa-solid fa-list-check" style="color:var(--primary-red); margin-right:6px;"></i> ${item.text}</div>`;
+    } else {
+      return `<div class="notif-item" onclick="clickNotifCustomer('${item.id}')"><i class="fa-solid fa-file-contract" style="color:var(--high-color); margin-right:6px;"></i> ${item.text}</div>`;
+    }
+  }).join('');
 }
+
+window.clickNotifTask = function(taskId) {
+  document.getElementById('notifBanner').classList.remove('open');
+  openTaskDetailsModal(taskId);
+};
+
+window.clickNotifCustomer = function(customerId) {
+  document.getElementById('notifBanner').classList.remove('open');
+  showPage('customers');
+  const card = document.getElementById('customerList');
+  if (card) {
+    card.scrollIntoView({ behavior: 'smooth' });
+  }
+};
 
 document.getElementById('bellBtn').addEventListener('click', () => {
   document.getElementById('notifBanner').classList.toggle('open');
 });
 
-// ---------- CREATE MEMBER ENGINE (Secondary Auth Bypass) ----------
+// ---------- CREATE MEMBER ENGINE (Secondary Auth Bypass with inMemoryPersistence & secondaryDb Rules Bypass) ----------
 
 document.getElementById('addUserForm')?.addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -1271,21 +1875,25 @@ document.getElementById('addUserForm')?.addEventListener('submit', async (e) => 
   errBox.textContent = '';
   
   try {
-    // Secondary Auth handles employee creation so Admin is not signed out
+    // 1. Force the secondary Auth instance to utilize inMemoryPersistence (never overrides admin's local session)
+    await setPersistence(secondaryAuth, inMemoryPersistence);
+    
+    // 2. Register account on secondaryAuth instance
     const cred = await createUserWithEmailAndPassword(secondaryAuth, email, pw);
     
-    // Save info to Firestore under users collection
-    await setDoc(doc(db, 'users', cred.user.uid), {
+    // 3. Obtain Firestore client linked to secondaryApp, writing as the new user to bypass custom rules
+    const secondaryDb = getFirestore(secondaryApp);
+    await setDoc(doc(secondaryDb, 'users', cred.user.uid), {
       name: name,
       email: email,
       role: 'staff',
       createdAt: serverTimestamp()
     });
     
-    // Sign out from the secondary session instantly
+    // 4. Gracefully sign out secondaryAuth instantly
     await signOut(secondaryAuth);
     
-    alert('สร้างบัญชีพนักงานสำเร็จ!\nอีเมล: ' + email + '\nรหัสผ่านเข้าใช้งาน: ' + pw + '\nพนักงานสามารถล็อกอินเข้าเครื่องของตนเองได้ทันที');
+    alert('สร้างบัญชีพนักงานสำเร็จ!\nอีเมล: ' + email + '\nรหัสผ่าน: ' + pw + '\nพนักงานสามารถล็อกอินได้เลย แอดมินยังคงล็อกอินปกติ');
     document.getElementById('addUserForm').reset();
     await loadUsers();
   } catch (err) {
@@ -1320,11 +1928,11 @@ window.exportCSVGeneric = (type) => {
     projectsCache.forEach(p => rows.push([p.name, p.startDate, p.dueDate, p.status]));
     downloadCSV('asg-work-projects.csv', rows);
   } else if (type === 'tasks') {
-    const rows = [['ชื่องาน', 'โครงการ', 'ผู้รับผิดชอบ', 'ความเร่งด่วน', 'กำหนดส่ง', 'สถานะ', 'รายละเอียด']];
-    tasksCache.forEach(t => rows.push([t.title, projectNameOf(t.projectId), nameOf(t.assignee), t.priority, t.dueDate, t.status, t.description]));
+    const rows = [['ชื่องาน', 'โครงการ', 'ผู้รับผิดชอบ', 'ระดับบริการ', 'ผู้สั่งงาน', 'ความเร่งด่วน', 'กำหนดส่ง', 'สถานะ', 'รายละเอียด']];
+    tasksCache.forEach(t => rows.push([t.title, projectNameOf(t.projectId), nameOf(t.assignee), t.category, t.assigner, t.priority, t.dueDate, t.status, t.description]));
     downloadCSV('asg-work-tasks.csv', rows);
   } else if (type === 'updates') {
-    const rows = [['วันที่', 'ผู้บันทึก', 'รายละเอียดการทำงาน Standup']];
+    const rows = [['วันที่', 'ผู้บันทึก', 'รายละเอียดการทำงาน']];
     updatesCache.forEach(u => rows.push([u.date, nameOf(u.uid), u.text]));
     downloadCSV('asg-work-daily-updates.csv', rows);
   } else if (type === 'customers') {
@@ -1353,3 +1961,19 @@ window.openImageModal = function(src) {
 window.closeImageModal = function() {
   document.getElementById('imagePreviewModal').classList.remove('open');
 };
+
+// ---------- FINANCIAL UTILS ----------
+
+function formatMoney(num) {
+  return Number(num || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function escapeHtml(text) {
+  if (!text) return '';
+  return text.toString()
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
