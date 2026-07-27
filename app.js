@@ -611,9 +611,9 @@ window.openAddTaskModal = function(taskId = null) {
     }
   } else {
     editingTaskId = null;
-    document.getElementById('modalTaskTitle').textContent = 'มอบหมายงานใหม่';
+    document.getElementById('modalTaskTitle').textContent = 'เพิ่มงาน';
     document.getElementById('taskFormSubmit').reset();
-    document.getElementById('taskSubmitBtnText').innerHTML = '<i class="fa-solid fa-plus"></i> มอบหมายงาน';
+    document.getElementById('taskSubmitBtnText').innerHTML = '<i class="fa-solid fa-plus"></i> เพิ่มงาน';
   }
   
   document.getElementById('taskModal').classList.add('open');
@@ -1608,56 +1608,58 @@ window.downloadQuotationPDF = function() {
   html2pdf().from(element).set(opt).save();
 };
 
-// ---------- DAILY UPDATES CRUD ----------
+// ---------- DAILY UPDATES / HISTORY FEED CRUD ----------
 
-document.getElementById('updateForm').addEventListener('submit', async (e) => {
+document.getElementById('quickActivityForm').addEventListener('submit', async (e) => {
   e.preventDefault();
-  const text = document.getElementById('updateText').value.trim();
+  const textInput = document.getElementById('quickActivityText');
+  const text = textInput.value.trim();
+  if (!text) return;
   
   try {
-    if (editingUpdateId) {
-      await updateDoc(doc(db, 'dailyUpdates', editingUpdateId), { text });
-      cancelEditUpdate();
-    } else {
-      await addDoc(collection(db, 'dailyUpdates'), {
-        uid: profile.uid,
-        date: new Date().toISOString().slice(0, 10),
-        text,
-        createdAt: serverTimestamp()
-      });
-      e.target.reset();
-    }
+    await logActivity(text);
+    textInput.value = '';
   } catch (err) {
-    alert('เกิดข้อผิดพลาดในการบันทึกอัปเดต: ' + err.message);
+    alert('เกิดข้อผิดพลาดในการบันทึกกิจกรรมด่วน: ' + err.message);
   }
 });
 
-window.editUpdate = (id) => {
-  const u = updatesCache.find(x => x.id === id);
-  if (!u) return;
-  editingUpdateId = id;
-  document.getElementById('updateText').value = u.text || '';
-  document.getElementById('updateSubmitBtn').innerHTML = '<i class="fa-solid fa-check"></i> บันทึกการแก้ไข';
-  document.getElementById('updateCancelBtn').style.display = 'inline-block';
-  document.getElementById('updateForm').classList.add('editing');
-  document.getElementById('updateForm').scrollIntoView({ behavior: 'smooth' });
-};
-
-window.cancelEditUpdate = () => {
-  editingUpdateId = null;
-  document.getElementById('updateForm').reset();
-  document.getElementById('updateSubmitBtn').innerHTML = '<i class="fa-solid fa-paper-plane"></i> บันทึกอัปเดต';
-  document.getElementById('updateCancelBtn').style.display = 'none';
-  document.getElementById('updateForm').classList.remove('editing');
-};
-
 window.deleteUpdate = async (id) => {
-  if (!confirm('ลบข้อมูลอัปเดตวันนี้?')) return;
+  if (!confirm('ลบรายการประวัตินี้?')) return;
   try {
     await deleteDoc(doc(db, 'dailyUpdates', id));
   } catch (err) {
     alert('เกิดข้อผิดพลาด: ' + err.message);
   }
+};
+
+function formatIndividualGroupedMessage(name, dateStr, detailsText) {
+  const dParts = dateStr.split('-');
+  let dateFormatted = dateStr;
+  if (dParts.length === 3) {
+    const dObj = new Date(dParts[0], dParts[1] - 1, dParts[2]);
+    dateFormatted = dObj.toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
+  }
+  return `📢 รายงานความคืบหน้าการทำงาน (รายบุคคล)\n` +
+         `👤 ผู้รายงาน: ${name}\n` +
+         `📅 ประจำวันที่: ${dateFormatted}\n` +
+         `📝 รายละเอียดอัปเดต:\n${detailsText}\n\n` +
+         `🔗 ลิงก์ระบบ: https://manybear.github.io/asg-work/`;
+}
+
+window.sendIndividualGroupedUpdateToLine = (name, dateStr, detailsText) => {
+  const msg = formatIndividualGroupedMessage(name, dateStr, detailsText);
+  const lineUrl = `https://line.me/R/msg/text/?${encodeURIComponent(msg)}`;
+  window.open(lineUrl, '_blank');
+};
+
+window.copyIndividualGroupedUpdateText = (name, dateStr, detailsText) => {
+  const msg = formatIndividualGroupedMessage(name, dateStr, detailsText);
+  navigator.clipboard.writeText(msg).then(() => {
+    alert(`คัดลอกสรุปอัปเดตของ ${name} สำเร็จ!`);
+  }).catch(err => {
+    alert('ไม่สามารถคัดลอกได้: ' + err.message);
+  });
 };
 
 // ---------- REAL-TIME LISTENER ENGINE ----------
