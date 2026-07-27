@@ -368,11 +368,14 @@ document.getElementById('projectForm').addEventListener('submit', async (e) => {
   try {
     if (editingProjectId) {
       await updateDoc(doc(db, 'projects', editingProjectId), data);
+      await logActivity(`📂 แก้ไขรายละเอียดโครงการ "${data.name}"`);
       cancelEditProject();
     } else {
       await addDoc(collection(db, 'projects'), { ...data, createdBy: profile.uid, createdAt: serverTimestamp() });
+      await logActivity(`📂 สร้างโครงการใหม่ "${data.name}"`);
       e.target.reset();
     }
+    showPage('updates');
   } catch (err) {
     alert('เกิดข้อผิดพลาดในการบันทึกโครงการ: ' + err.message);
   }
@@ -402,9 +405,12 @@ window.cancelEditProject = () => {
 };
 
 window.deleteProject = async (id) => {
-  if (!confirm('ลบโปรเจกต์นี้? งานย่อยที่เกี่ยวข้องจะยังคงอยู่แต่ไม่เชื่อมโครงการ')) return;
+  const p = projectsCache.find(x => x.id === id);
+  const pName = p ? p.name : 'ไม่ระบุชื่อโครงการ';
+  if (!confirm(`ลบโปรเจกต์ "${pName}"? งานย่อยที่เกี่ยวข้องจะยังคงอยู่แต่ไม่เชื่อมโครงการ`)) return;
   try {
     await deleteDoc(doc(db, 'projects', id));
+    await logActivity(`🗑️ ลบโครงการ "${pName}"`);
   } catch (err) {
     alert('เกิดข้อผิดพลาด: ' + err.message);
   }
@@ -706,9 +712,12 @@ document.getElementById('taskFormSubmit').addEventListener('submit', async (e) =
 });
 
 window.deleteTask = async (id) => {
-  if (!confirm('ลบงานนี้?')) return;
+  const t = tasksCache.find(x => x.id === id);
+  const taskTitle = t ? t.title : 'ไม่ระบุชื่องาน';
+  if (!confirm(`ลบงาน "${taskTitle}"?`)) return;
   try {
     await deleteDoc(doc(db, 'tasks', id));
+    await logActivity(`🗑️ ลบงาน "${taskTitle}"`);
   } catch (err) {
     alert('เกิดข้อผิดพลาด: ' + err.message);
   }
@@ -1178,11 +1187,14 @@ document.getElementById('customerForm').addEventListener('submit', async (e) => 
   try {
     if (editingCustomerId) {
       await updateDoc(doc(db, 'customers', editingCustomerId), data);
+      await logActivity(`👤 แก้ไขประวัติข้อมูลลูกค้า "${data.name}"`);
       cancelEditCustomer();
     } else {
       await addDoc(collection(db, 'customers'), { ...data, createdAt: serverTimestamp() });
+      await logActivity(`👤 เพิ่มรายชื่อลูกค้าใหม่ "${data.name}"`);
       e.target.reset();
     }
+    showPage('updates');
   } catch (err) {
     alert('เกิดข้อผิดพลาดในการบันทึกข้อมูลลูกค้า: ' + err.message);
   }
@@ -1214,9 +1226,12 @@ window.cancelEditCustomer = () => {
 };
 
 window.deleteCustomer = async (id) => {
-  if (!confirm('ต้องการลบข้อมูลลูกค้ารายนี้?')) return;
+  const c = customersCache.find(x => x.id === id);
+  const cName = c ? c.name : 'ไม่ระบุชื่อลูกค้า';
+  if (!confirm(`ต้องการลบข้อมูลลูกค้า "${cName}"?`)) return;
   try {
     await deleteDoc(doc(db, 'customers', id));
+    await logActivity(`🗑️ ลบข้อมูลลูกค้า "${cName}"`);
   } catch (err) {
     alert('เกิดข้อผิดพลาด: ' + err.message);
   }
@@ -1268,9 +1283,12 @@ window.openCreateQuotationForm = function() {
   document.getElementById('qtDate').value = now.toISOString().slice(0, 10);
   document.getElementById('qtCode').value = 'QT-' + now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + String(now.getDate()).padStart(2, '0') + '-' + String(Date.now()).slice(-3);
   
-  const custSel = document.getElementById('qtCustomer');
-  custSel.innerHTML = '<option value="">-- เลือกบริษัทลูกค้า --</option>' + 
-    customersCache.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+  const datalist = document.getElementById('customersDatalist');
+  if (datalist) {
+    datalist.innerHTML = customersCache.map(c => `<option value="${c.name}"></option>`).join('');
+  }
+  const custInput = document.getElementById('qtCustomer');
+  if (custInput) custInput.value = '';
     
   addQuotationItemRow("", 1, 0);
   document.getElementById('quotationFormPanel').style.display = 'block';
@@ -1335,7 +1353,12 @@ document.getElementById('quotationForm').addEventListener('submit', async (e) =>
   
   const code = document.getElementById('qtCode').value.trim();
   const date = document.getElementById('qtDate').value;
-  const customerId = document.getElementById('qtCustomer').value;
+  
+  const customerInput = document.getElementById('qtCustomer').value.trim();
+  const matchedCust = customersCache.find(c => c.name === customerInput);
+  const customerId = matchedCust ? matchedCust.id : '';
+  const customerName = customerInput;
+  
   const companyName = document.getElementById('qtCompanyName').value.trim();
   const companyAddress = document.getElementById('qtCompanyAddress').value.trim();
   const notes = document.getElementById('qtNotes').value.trim();
@@ -1368,6 +1391,7 @@ document.getElementById('quotationForm').addEventListener('submit', async (e) =>
     code,
     date,
     customerId,
+    customerName,
     companyName,
     companyAddress,
     items,
@@ -1385,8 +1409,14 @@ document.getElementById('quotationForm').addEventListener('submit', async (e) =>
   
   try {
     await setDoc(doc(db, 'settings', id), data);
+    if (editingQuotationId) {
+      await logActivity(`💰 แก้ไขข้อมูลใบเสนอราคา หมายเลข "${code}" สำหรับลูกค้า "${customerName}"`);
+    } else {
+      await logActivity(`💰 ออกใบเสนอราคาใหม่ หมายเลข "${code}" สำหรับลูกค้า "${customerName}"`);
+    }
     alert(editingQuotationId ? 'แก้ไขใบเสนอราคาสำเร็จ' : 'บันทึกใบเสนอราคาสำเร็จ');
     closeQuotationFormPanel();
+    showPage('updates');
   } catch (err) {
     alert('เกิดข้อผิดพลาดในการบันทึกเอกสาร: ' + err.message);
   }
@@ -1401,10 +1431,14 @@ window.editQuotation = function(qId) {
   document.getElementById('qtCode').value = q.code || '';
   document.getElementById('qtDate').value = q.date || '';
   
-  const custSel = document.getElementById('qtCustomer');
-  custSel.innerHTML = '<option value="">-- เลือกบริษัทลูกค้า --</option>' + 
-    customersCache.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
-  custSel.value = q.customerId || '';
+  const datalist = document.getElementById('customersDatalist');
+  if (datalist) {
+    datalist.innerHTML = customersCache.map(c => `<option value="${c.name}"></option>`).join('');
+  }
+  const custInput = document.getElementById('qtCustomer');
+  if (custInput) {
+    custInput.value = q.customerName || (cust ? cust.name : '');
+  }
   
   document.getElementById('qtCompanyName').value = q.companyName || 'บริษัท แอดวานซ์ บิสซิเนส แมกกาซีน จำกัด';
   document.getElementById('qtCompanyAddress').value = q.companyAddress || '';
@@ -1441,7 +1475,7 @@ function renderQuotations(quotations) {
           <strong style="font-size:14px;"><i class="fa-solid fa-file-invoice-dollar"></i> ${q.code || '-'}</strong>
           <span style="font-size:14px; font-weight:700; color:var(--primary-red)">฿${formatMoney(grandTotal)}</span>
         </div>
-        <div class="ts">วันที่: ${q.date || '-'} · ลูกค้า: ${cust ? cust.name : '-'}</div>
+        <div class="ts">วันที่: ${q.date || '-'} · ลูกค้า: ${escapeHtml(q.customerName || (cust ? cust.name : '-'))}</div>
         <div style="margin-top:6px; font-size:12px; color:var(--text-muted);">
           รายการ: ${(q.items || []).map(i => i.desc).join(', ')}
         </div>
@@ -1456,9 +1490,13 @@ function renderQuotations(quotations) {
 }
 
 window.deleteQuotationRecord = async (qId) => {
-  if (!confirm('ลบเอกสารใบเสนอราคานี้?')) return;
+  const q = quotationsCache.find(x => x.id === qId);
+  const qCode = q ? q.code : 'ไม่ระบุหมายเลข';
+  const qCustName = q ? (q.customerName || '') : '';
+  if (!confirm(`ลบเอกสารใบเสนอราคา หมายเลข "${qCode}"?`)) return;
   try {
     await deleteDoc(doc(db, 'settings', qId));
+    await logActivity(`🗑️ ลบข้อมูลใบเสนอราคา หมายเลข "${qCode}" ของลูกค้า "${qCustName}"`);
   } catch (err) {
     alert('เกิดข้อผิดพลาด: ' + err.message);
   }
@@ -1518,7 +1556,7 @@ window.printQuotationDocument = function(qId) {
       <div class="print-box" style="border:1px solid #cbd5e1; padding:12px; border-radius:6px; background:#f8fafc;">
         <div style="font-size:11px; font-weight:700; text-transform:uppercase; color:#475569; border-bottom:1px solid #e2e8f0; padding-bottom:4px; margin-bottom:8px;">👤 ข้อมูลลูกค้า / ผู้รับการเสนอราคา</div>
         <div style="font-size:12px; line-height:1.6;">
-          <strong>ลูกค้า/บริษัท:</strong> ${cust ? escapeHtml(cust.name) : '-'}${custPhoneLine}${custTaxLine}${custAddressLine}
+          <strong>ลูกค้า/บริษัท:</strong> ${escapeHtml(q.customerName || (cust ? cust.name : '-'))}${custPhoneLine}${custTaxLine}${custAddressLine}
         </div>
       </div>
       <div class="print-box" style="border:1px solid #cbd5e1; padding:12px; border-radius:6px; background:#f8fafc;">
