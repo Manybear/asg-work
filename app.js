@@ -933,13 +933,27 @@ function formatTaskShareMessage(t) {
   const proj = projectsCache.find(x => x.id === t.projectId);
   const prioLabels = { urgent: '🔴 ด่วนที่สุด', high: '🟠 สูง', mid: '🟡 กลาง', low: '🟢 ต่ำ' };
   
+  // Format checklist progress (if subtasks exist)
+  let checklistLabel = '';
+  if (t.subtasks && t.subtasks.length > 0) {
+    const completed = t.subtasks.filter(x => x.done).length;
+    checklistLabel = `\n📋 งานย่อย: ${completed}/${t.subtasks.length} (${t.percent || 0}%)`;
+  }
+  
+  // Format timeline updates (if updates exist, show up to 3 latest)
+  let updatesLabel = '';
+  if (t.updates && t.updates.length > 0) {
+    updatesLabel = `\n\n🔄 อัปเดตความคืบหน้าล่าสุด:\n` + 
+      t.updates.slice(0, 3).map(u => `- [${u.date}] ${u.name}: ${u.text}`).join('\n');
+  }
+  
   return `📢 แจ้งเตือนงาน: ASG WORK\n` +
          `📌 ชื่องาน: ${t.title}\n` +
          `📂 โครงการ: ${proj ? proj.name : '-'}\n` +
          `👤 ผู้รับผิดชอบ: ${namesLabel}\n` +
          `⚡ ระดับความสำคัญ: ${prioLabels[t.priority || 'mid']}\n` +
-         `📅 กำหนดส่ง: ${t.dueDate || '-'}\n` +
-         `📝 รายละเอียด: ${t.description || 'ไม่มี'}\n` +
+         `📅 กำหนดส่ง: ${t.dueDate || '-'}${checklistLabel}\n` +
+         `📝 รายละเอียด: ${t.description || 'ไม่มี'}${updatesLabel}\n` +
          `🔗 ลิงก์ระบบ: https://manybear.github.io/asg-work/`;
 }
 
@@ -1329,7 +1343,9 @@ document.getElementById('quotationForm').addEventListener('submit', async (e) =>
     vat,
     total,
     notes,
-    createdBy: profile.uid,
+    createdBy: editingQuotationId 
+      ? (quotationsCache.find(x => x.id === editingQuotationId)?.createdBy || profile.uid) 
+      : profile.uid,
     createdAt: editingQuotationId 
       ? (quotationsCache.find(x => x.id === editingQuotationId).createdAt || serverTimestamp()) 
       : serverTimestamp()
@@ -1683,6 +1699,7 @@ function initRealtimeListeners() {
   onSnapshot(q, (snap) => {
     quotationsCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     filterAndRenderQuotations();
+    renderDashboardStats(tasksCache, projectsCache, customersCache, usersCache);
   });
 }
 
@@ -1808,23 +1825,39 @@ function renderTasksList(tasks) {
 }
 
 function renderDashboardStats(tasks, projects, customers, users) {
-  document.getElementById('statProjects').textContent = projects.length;
-  document.getElementById('statTeamSize').textContent = usersCache.length;
+  const statProj = document.getElementById('statProjects');
+  if (statProj) statProj.textContent = projects.length;
+  
+  const statTeam = document.getElementById('statTeamSize');
+  if (statTeam) statTeam.textContent = usersCache.length;
   
   const pendingTasks = tasks.filter(t => t.status !== 'done');
-  document.getElementById('statPendingTasks').textContent = pendingTasks.length;
+  const statPending = document.getElementById('statPendingTasks');
+  if (statPending) statPending.textContent = pendingTasks.length;
   
   const soonContracts = customers.filter(c => {
     const d = daysUntil(c.contractEndDate);
     return d >= 0 && d <= 30;
   });
-  document.getElementById('statExpiringContracts').textContent = soonContracts.length;
+  const statContracts = document.getElementById('statExpiringContracts');
+  if (statContracts) statContracts.textContent = soonContracts.length;
+  
+  // Calculate and render Quotations statistics (exclude void/cancelled ones)
+  const activeQuotes = quotationsCache.filter(q => q.status !== 'void');
+  const totalAmount = activeQuotes.reduce((sum, q) => sum + (Number(q.total) || 0), 0);
+  const statQuotes = document.getElementById('statQuotations');
+  if (statQuotes) {
+    const formattedAmount = Number(totalAmount).toLocaleString('th-TH', { maximumFractionDigits: 0 });
+    statQuotes.textContent = `${activeQuotes.length} ใบ / ฿${formattedAmount}`;
+  }
   
   const doneCount = tasks.filter(t => t.status === 'done').length;
   const inprogCount = tasks.filter(t => t.status === 'inprog').length;
   const notyetCount = tasks.filter(t => t.status === 'notyet').length;
   
-  const ctx = document.getElementById('dashboardChart').getContext('2d');
+  const chartEl = document.getElementById('dashboardChart');
+  if (!chartEl) return;
+  const ctx = chartEl.getContext('2d');
   if (dashboardChartInstance) {
     dashboardChartInstance.destroy();
   }
@@ -1910,6 +1943,40 @@ function renderDashboardStats(tasks, projects, customers, users) {
   }
 }
 
+function renderDailyUpdates(updates) {
+  const box = document.getElementById('updateList');
+  if (!box) return;
+  if (!updates || updates.length === 0) {
+    box.innerHTML = '<p class="muted">ไม่มีบันทึกอัปเดตงานในระบบ</p>';
+    return;
+  }
+  
+  box.innerHTML = updates.map(u => {
+    const user = usersCache.find(x => x.uid === u.uid);
+    const userName = user ? user.name : 'ไม่ระบุผู้ใช้';
+    const isOwner = currentUser && currentUser.uid === u.uid;
+    const canManage = isOwner || (profile && profile.role === 'admin');
+    
+    return `
+      <div class="card" style="margin-bottom: 8px;">
+        <div style="display:flex; justify-content:space-between; align-items:start; border-bottom:1px solid var(--border-color); padding-bottom:8px; margin-bottom:8px;">
+          <div>
+            <strong style="color:var(--primary-red); font-size:14px;"><i class="fa-solid fa-user-pen"></i> ${userName}</strong>
+            <span class="ts" style="margin-left: 8px;"><i class="fa-solid fa-calendar-day"></i> ${u.date}</span>
+          </div>
+          ${canManage ? `
+            <div style="display:flex; gap:6px;">
+              ${isOwner ? `<button class="icon-btn edit" onclick="editUpdate('${u.id}')"><i class="fa-solid fa-pen-to-square"></i> แก้ไข</button>` : ''}
+              <button class="icon-btn del" onclick="deleteUpdate('${u.id}')"><i class="fa-solid fa-trash"></i> ลบ</button>
+            </div>
+          ` : ''}
+        </div>
+        <div style="font-size:13.5px; white-space:pre-wrap; line-height:1.5; color:var(--text-dark);">${escapeHtml(u.text)}</div>
+      </div>
+    `;
+  }).join('');
+}
+
 function renderTeamActivity(updates) {
   const box = document.getElementById('teamActivityFeed');
   if (!updates || updates.length === 0) {
@@ -1963,7 +2030,12 @@ function renderTeamMembers(users, tasks) {
           </div>
         </div>
         ${profile.role === 'admin' && u.uid !== profile.uid ? `
-          <button class="icon-btn del" onclick="deleteUserRecord('${u.uid}')"><i class="fa-solid fa-trash"></i> ลบ</button>
+          <div style="display:flex; gap:8px;">
+            <button class="icon-btn edit" onclick="toggleUserRole('${u.uid}', '${u.role || 'staff'}')">
+              <i class="fa-solid fa-user-gear"></i> ${u.role === 'admin' ? 'ตั้งเป็นพนักงาน' : 'ตั้งเป็นหัวหน้า'}
+            </button>
+            <button class="icon-btn del" onclick="deleteUserRecord('${u.uid}')"><i class="fa-solid fa-trash"></i> ลบ</button>
+          </div>
         ` : ''}
       </div>
     `;
@@ -1977,6 +2049,19 @@ window.deleteUserRecord = async (uid) => {
     await loadUsers();
   } catch (err) {
     alert('เกิดข้อผิดพลาด: ' + err.message);
+  }
+};
+
+window.toggleUserRole = async (uid, currentRole) => {
+  const newRole = currentRole === 'admin' ? 'staff' : 'admin';
+  const roleName = newRole === 'admin' ? 'หัวหน้างาน (Admin)' : 'พนักงาน (Staff)';
+  if (!confirm(`เปลี่ยนบทบาทของพนักงานคนนี้ให้เป็น ${roleName}?`)) return;
+  try {
+    await updateDoc(doc(db, 'users', uid), { role: newRole });
+    await loadUsers();
+    alert('เปลี่ยนบทบาทสำเร็จเรียบร้อยแล้ว!');
+  } catch (err) {
+    alert('เกิดข้อผิดพลาดในการเปลี่ยนบทบาท: ' + err.message);
   }
 };
 
@@ -2081,6 +2166,7 @@ document.getElementById('addUserForm')?.addEventListener('submit', async (e) => 
   const email = document.getElementById('newUserEmail').value.trim();
   const pw = document.getElementById('newUserPassword').value;
   const name = document.getElementById('newUserName').value.trim();
+  const role = document.getElementById('newUserRole').value;
   const errBox = document.getElementById('addUserError');
   errBox.textContent = '';
   
@@ -2093,7 +2179,7 @@ document.getElementById('addUserForm')?.addEventListener('submit', async (e) => 
     await setDoc(doc(secondaryDb, 'users', cred.user.uid), {
       name: name,
       email: email,
-      role: 'staff',
+      role: role,
       createdAt: serverTimestamp()
     });
     
@@ -2150,6 +2236,15 @@ window.exportCSVGeneric = (type) => {
     const rows = [['ชื่อลูกค้า/บริษัท', 'เลขประจำตัวผู้เสียภาษี', 'เบอร์โทร', 'วันครบสัญญา', 'ที่อยู่', 'หมายเหตุ']];
     customersCache.forEach(c => rows.push([c.name, c.taxId, c.phone, c.contractEndDate, c.address, c.note]));
     downloadCSV('asg-work-customers.csv', rows);
+  } else if (type === 'quotations') {
+    const rows = [['เลขที่ใบเสนอราคา', 'วันที่เอกสาร', 'ลูกค้า', 'ยอดเงินรวม (บาท)', 'ผู้จัดทำ', 'สถานะ']];
+    quotationsCache.forEach(q => {
+      const cust = customersCache.find(x => x.id === q.customerId);
+      const custName = cust ? cust.name : '-';
+      const creatorName = nameOf(q.createdBy);
+      rows.push([q.code, q.date, custName, q.total || 0, creatorName, q.status || 'active']);
+    });
+    downloadCSV('asg-work-quotations.csv', rows);
   }
 };
 
