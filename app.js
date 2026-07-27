@@ -152,8 +152,11 @@ async function loadSettings() {
   if (snap.exists()) settings = snap.data();
   else await setDoc(ref, settings);
   
-  document.getElementById('visibilitySelect').value = settings.visibilityMode;
-  document.getElementById('adminPanel').style.display = profile.role === 'admin' ? 'block' : 'none';
+  const visibilitySelect = document.getElementById('visibilitySelect');
+  if (visibilitySelect) visibilitySelect.value = settings.visibilityMode;
+  
+  const adminPanel = document.getElementById('adminPanel');
+  if (adminPanel) adminPanel.style.display = profile.role === 'admin' ? 'block' : 'none';
   
   // Load dynamic Categories
   const catSnap = await getDoc(doc(db, 'settings', 'categories'));
@@ -183,10 +186,12 @@ async function loadUsers() {
   
   // Populate filter dropdown
   const filterAssignee = document.getElementById('filterAssignee');
-  const selectedAssignee = filterAssignee.value;
-  filterAssignee.innerHTML = '<option value="">ทุกคนในทีม</option>' + 
-    usersCache.map(u => `<option value="${u.uid}">${u.name}</option>`).join('');
-  filterAssignee.value = selectedAssignee;
+  if (filterAssignee) {
+    const selectedAssignee = filterAssignee.value;
+    filterAssignee.innerHTML = '<option value="">ทุกคนในทีม</option>' + 
+      usersCache.map(u => `<option value="${u.uid}">${u.name}</option>`).join('');
+    filterAssignee.value = selectedAssignee;
+  }
   
   renderTeamMembers(usersCache, tasksCache);
 }
@@ -1666,11 +1671,20 @@ function initRealtimeListeners() {
 // ---------- RENDER VIEWS & CONTROLLERS ----------
 
 window.filterAndRenderTasks = function() {
-  const queryText = document.getElementById('taskSearch').value.toLowerCase().trim();
-  const projFilter = document.getElementById('filterProject').value;
-  const assigneeFilter = document.getElementById('filterAssignee').value;
-  const statusFilter = document.getElementById('filterStatus').value;
-  const priorityFilter = document.getElementById('filterPriority').value;
+  const searchEl = document.getElementById('taskSearch');
+  const queryText = searchEl ? searchEl.value.toLowerCase().trim() : '';
+  
+  const projFilterEl = document.getElementById('filterProject');
+  const projFilter = projFilterEl ? projFilterEl.value : '';
+  
+  const assigneeFilterEl = document.getElementById('filterAssignee');
+  const assigneeFilter = assigneeFilterEl ? assigneeFilterEl.value : '';
+  
+  const statusFilterEl = document.getElementById('filterStatus');
+  const statusFilter = statusFilterEl ? statusFilterEl.value : '';
+  
+  const priorityFilterEl = document.getElementById('filterPriority');
+  const priorityFilter = priorityFilterEl ? priorityFilterEl.value : '';
   
   const uids = visibleUids();
   let list = uids ? tasksCache.filter(t => {
@@ -1707,7 +1721,8 @@ window.clearTaskFilters = function() {
 };
 
 window.filterAndRenderQuotations = function() {
-  const queryText = document.getElementById('quotationSearch').value.toLowerCase().trim();
+  const searchInput = document.getElementById('quotationSearch');
+  const queryText = searchInput ? searchInput.value.toLowerCase().trim() : '';
   let list = [...quotationsCache];
   if (queryText) {
     list = list.filter(q => {
@@ -2140,18 +2155,3 @@ window.closeImageModal = function() {
   document.getElementById('imagePreviewModal').classList.remove('open');
 };
 
-// ---------- FINANCIAL UTILS ----------
-
-function formatMoney(num) {
-  return Number(num || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-function escapeHtml(text) {
-  if (!text) return '';
-  return text.toString()
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
