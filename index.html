@@ -167,6 +167,14 @@
       </span>
     </h2>
 
+    <!-- Quick Filter Shortcuts -->
+    <div class="quick-filters-bar" style="display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap;">
+      <button class="btn btn-sm btn-ghost active-quick-filter" id="qfAll" onclick="applyQuickFilter('all')" style="border-radius:20px; font-size:12.5px; padding:6px 14px; display:inline-flex; align-items:center; gap:5px;"><i class="fa-solid fa-list"></i> งานทั้งหมด</button>
+      <button class="btn btn-sm btn-ghost" id="qfMy" onclick="applyQuickFilter('my')" style="border-radius:20px; font-size:12.5px; padding:6px 14px; display:inline-flex; align-items:center; gap:5px;"><i class="fa-solid fa-user-check"></i> งานของฉัน</button>
+      <button class="btn btn-sm btn-ghost" id="qfUrgent" onclick="applyQuickFilter('urgent')" style="border-radius:20px; font-size:12.5px; padding:6px 14px; color:var(--urgent-color); display:inline-flex; align-items:center; gap:5px;"><i class="fa-solid fa-circle-exclamation"></i> งานด่วนที่สุด</button>
+      <button class="btn btn-sm btn-ghost" id="qfOverdue" onclick="applyQuickFilter('overdue')" style="border-radius:20px; font-size:12.5px; padding:6px 14px; color:var(--high-color); display:inline-flex; align-items:center; gap:5px;"><i class="fa-solid fa-clock"></i> งานเลยกำหนดส่ง</button>
+    </div>
+
     <!-- Search & Filter Bar -->
     <div class="filter-bar">
       <input type="text" id="taskSearch" placeholder="🔍 ค้นหาชื่องาน..." style="flex: 1; min-width:180px;" oninput="filterAndRenderTasks()">
@@ -225,17 +233,41 @@
         <button type="button" onclick="printPage('page-customers')"><i class="fa-solid fa-print"></i> พิมพ์เอกสาร</button>
       </span>
     </h2>
-    <form class="form-inline" id="customerForm" style="display: flex; flex-direction: column; align-items: stretch; gap: 10px;">
-      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
-        <input id="custName" placeholder="ชื่อบริษัทลูกค้า / ชื่องานสัญญา *" required>
-        <input id="custTaxId" placeholder="เลขประจำตัวผู้เสียภาษี (Tax ID)">
-        <input id="custPhone" placeholder="เบอร์โทรศัพท์ / ผู้ติดต่อ">
-        <input id="custEndDate" type="date" required title="วันครบกำหนดสัญญา">
-        <input id="custReminderDays" type="number" placeholder="เตือนล่วงหน้า (วัน) เช่น 15" value="15">
+    <form class="form-inline" id="customerForm" style="display: flex; flex-direction: column; align-items: stretch; gap: 12px; background: #f8fafc; padding: 16px; border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 20px;">
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px;">
+        <div class="form-group" style="display: flex; flex-direction: column; gap: 4px;">
+          <label style="font-size: 12px; font-weight: 700; color: var(--text-dark);">ชื่อลูกค้า / บริษัท / สัญญา *</label>
+          <input id="custName" placeholder="ระบุชื่อบริษัทหรือชื่องานสัญญา" required style="width:100%;">
+        </div>
+        <div class="form-group" style="display: flex; flex-direction: column; gap: 4px;">
+          <label style="font-size: 12px; font-weight: 700; color: var(--text-dark);">เลขประจำตัวผู้เสียภาษี (Tax ID)</label>
+          <input id="custTaxId" placeholder="ระบุเลขผู้เสียภาษี (ถ้ามี)" style="width:100%;">
+        </div>
+        <div class="form-group" style="display: flex; flex-direction: column; gap: 4px;">
+          <label style="font-size: 12px; font-weight: 700; color: var(--text-dark);">เบอร์โทร / ผู้ติดต่อ</label>
+          <input id="custPhone" placeholder="ระบุเบอร์โทรหรือผู้ติดต่อ" style="width:100%;">
+        </div>
+        <div class="form-group" style="display: flex; flex-direction: column; gap: 4px;">
+          <label style="font-size: 12px; font-weight: 700; color: var(--text-dark);">วันสิ้นสุดสัญญา *</label>
+          <input id="custEndDate" type="date" required style="width:100%;">
+        </div>
+        <div class="form-group" style="display: flex; flex-direction: column; gap: 4px;">
+          <label style="font-size: 12px; font-weight: 700; color: var(--text-dark);">เตือนล่วงหน้า (วัน)</label>
+          <input id="custReminderDays" type="number" placeholder="เช่น 15, 30" value="15" style="width:100%;">
+        </div>
       </div>
-      <textarea id="custAddress" placeholder="ที่อยู่บริษัทลูกค้าอย่างละเอียดสำหรับออกใบเสนอราคา..." style="width:100%; height:60px; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); font-family: var(--font-family); resize: vertical;"></textarea>
-      <input id="custNote" placeholder="รายละเอียด/หมายเหตุการบริการเพิ่มเติม" style="width: 100%;">
-      <div style="display:flex; justify-content:flex-end; gap:8px;">
+      
+      <div class="form-group" style="display: flex; flex-direction: column; gap: 4px; margin-top: 4px;">
+        <label style="font-size: 12px; font-weight: 700; color: var(--text-dark);">ที่อยู่จัดส่งเอกสาร / วางบิล (สำหรับออกใบเสนอราคา)</label>
+        <textarea id="custAddress" placeholder="ระบุที่อยู่บริษัทอย่างละเอียดเพื่อนำไปใช้ออกเอกสารใบเสนอราคาโดยอัตโนมัติ..." style="width:100%; height:65px; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); font-family: var(--font-family); resize: vertical;"></textarea>
+      </div>
+      
+      <div class="form-group" style="display: flex; flex-direction: column; gap: 4px;">
+        <label style="font-size: 12px; font-weight: 700; color: var(--text-dark);">หมายเหตุ / รายละเอียดเพิ่มเติม</label>
+        <input id="custNote" placeholder="ระบุหมายเหตุหรือข้อตกลงสัญญาเพิ่มเติม..." style="width: 100%;">
+      </div>
+      
+      <div style="display:flex; justify-content:flex-end; gap:8px; margin-top: 8px;">
         <button type="submit" id="custSubmitBtn"><i class="fa-solid fa-plus"></i> บันทึกข้อมูลลูกค้า</button>
         <button type="button" class="btn btn-ghost cancel-edit-btn" id="custCancelBtn" onclick="cancelEditCustomer()">ยกเลิก</button>
       </div>
@@ -337,7 +369,13 @@
   <!-- 7. DAILY STANDUP PAGE -->
   <div class="page" id="page-updates">
     <h2 class="sec">บันทึกอัปเดตงานวันนี้ (Daily Standup)
-      <span class="toolbar">
+      <span class="toolbar" style="gap: 8px; flex-wrap: wrap;">
+        <span style="font-size: 13px; font-weight: normal; display: inline-flex; align-items: center; gap: 6px; color: var(--text-muted); margin-right: 8px;">
+          📅 เลือกวันที่รายงาน: 
+          <input type="date" id="dailyReportDateFilter" onchange="filterAndRenderDailyUpdates()" style="padding: 4px 8px; border-radius: 6px; border: 1px solid var(--border-color); font-family: var(--font-family); font-size: 13px; outline: none; background: #fff; color: var(--text-dark);">
+        </span>
+        <button type="button" onclick="sendDailyReportToLine()" style="background:#06c755; color:#fff;"><i class="fa-brands fa-line"></i> ส่งไลน์รายงานวันนี้</button>
+        <button type="button" onclick="copyDailyReportText()"><i class="fa-regular fa-copy"></i> คัดลอกสรุปรายงาน</button>
         <button type="button" onclick="exportCSVGeneric('updates')"><i class="fa-solid fa-file-csv"></i> Export CSV</button>
         <button type="button" onclick="printPage('page-updates')"><i class="fa-solid fa-print"></i> พิมพ์อัปเดตวันนี้</button>
       </span>
@@ -472,9 +510,9 @@
       </div>
       <div class="form-2col">
         <div class="form-row">
-          <label>โครงการ (Project) *</label>
-          <select id="taskProjectSelect" required>
-            <option value="">-- เลือกโครงการ --</option>
+          <label>โครงการ (Project)</label>
+          <select id="taskProjectSelect">
+            <option value="">-- งานทั่วไป (ไม่มีโครงการ) --</option>
           </select>
         </div>
         <div class="form-row">
