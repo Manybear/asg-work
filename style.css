@@ -1068,3 +1068,24 @@ h2.sec {
   box-shadow: 0 0 0 3px var(--primary-red-light) !important;
   z-index: 10;
 }
+
+/* Quick Filter Buttons Styling */
+.quick-filters-bar button {
+  border: 1px solid var(--border-color);
+  background: var(--card-bg);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+}
+.quick-filters-bar button:hover {
+  background: #f1f5f9;
+  color: var(--text-dark);
+  border-color: #cbd5e1;
+}
+.quick-filters-bar button.active-quick-filter {
+  background: var(--primary-red-light) !important;
+  color: var(--primary-red) !important;
+  border-color: var(--primary-red) !important;
+  font-weight: 700;
+  box-shadow: 0 2px 4px rgba(185, 28, 28, 0.08);
+}
