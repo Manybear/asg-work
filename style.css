@@ -194,6 +194,11 @@ nav {
   font-size: 13px;
   color: var(--text-dark);
   line-height: 1.4;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+.notif-item:hover {
+  background-color: #f1f5f9;
 }
 .notif-item:last-child {
   border-bottom: none;
@@ -845,12 +850,165 @@ h2.sec {
   font-weight: 700;
 }
 
+/* CALENDAR STYLES */
+.calendar-grid-header {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  text-align: center;
+  font-weight: 700;
+  padding: 12px 0;
+  border-bottom: 2px solid var(--border-color);
+  color: var(--text-muted);
+}
+.calendar-grid-days {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  grid-auto-rows: minmax(100px, auto);
+}
+.calendar-day {
+  border-right: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border-color);
+  padding: 6px;
+  background: var(--card-bg);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.calendar-day:nth-child(7n) {
+  border-right: none;
+}
+.calendar-day.empty-day {
+  background: #f1f5f9;
+}
+.calendar-day.today {
+  background: var(--primary-red-light);
+}
+.calendar-day-num {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+.calendar-day.today .calendar-day-num {
+  color: var(--primary-red);
+}
+.calendar-task-item {
+  font-size: 10.5px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  font-weight: 700;
+}
+.calendar-task-item.urgent { background-color: var(--urgent-color); }
+.calendar-task-item.high { background-color: var(--high-color); }
+.calendar-task-item.mid { background-color: var(--medium-color); }
+.calendar-task-item.low { background-color: var(--low-color); }
+.calendar-task-item.done { background-color: var(--low-color); opacity: 0.7; text-decoration: line-through; }
+
+/* A4 PRINT AND PDF LAYOUTS */
+#quotationPrintModal .modal {
+  padding: 0;
+}
+#quotationPaper {
+  line-height: 1.5;
+}
+.print-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  border-bottom: 2px solid #000;
+  padding-bottom: 12px;
+  margin-bottom: 18px;
+}
+.print-title h2 {
+  font-size: 20pt;
+  font-weight: 700;
+  margin-bottom: 4px;
+  color: #000;
+}
+.print-title p {
+  font-size: 10pt;
+  color: #444;
+}
+.print-badge {
+  border: 2px solid #000;
+  padding: 6px 14px;
+  font-size: 14pt;
+  font-weight: 700;
+  border-radius: 6px;
+}
+.print-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.print-box {
+  border: 1px solid #999;
+  border-radius: 4px;
+  padding: 10px;
+  background: #fafafa !important;
+}
+.print-box-title {
+  font-size: 10.5pt;
+  font-weight: 700;
+  border-bottom: 1px solid #ccc;
+  padding-bottom: 4px;
+  margin-bottom: 6px;
+  color: #000;
+}
+.print-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9.5pt;
+  margin-bottom: 4px;
+}
+.print-details-box {
+  border: 1px solid #999;
+  border-radius: 4px;
+  padding: 10px;
+  margin-bottom: 16px;
+}
+.print-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 10px;
+  margin-bottom: 20px;
+}
+.print-table th, .print-table td {
+  border: 1px solid #000;
+  padding: 6px 10px;
+  font-size: 9.5pt;
+}
+.print-table th {
+  background-color: #eee !important;
+  font-weight: 700;
+  text-align: left;
+}
+.print-footer-signatures {
+  margin-top: 40px;
+  display: flex;
+  justify-content: space-between;
+}
+.print-sig-box {
+  width: 45%;
+  text-align: center;
+  border-top: 1px dashed #000;
+  padding-top: 8px;
+  font-size: 9.5pt;
+}
+
 @media print {
-  nav, .filter-bar, .btn, .modal-bg, .card-actions, #bellBtn {
+  nav, .filter-bar, .btn, .modal-bg, .card-actions, #bellBtn, #quotationPrintModal > .modal > div:first-child {
     display: none !important;
   }
   body {
     background: #fff;
+    color: #000;
   }
   .page {
     display: none !important;
@@ -862,5 +1020,29 @@ h2.sec {
   .card {
     box-shadow: none;
     border: 1px solid #ccc;
+  }
+  #quotationPrintModal {
+    display: block !important;
+    position: static !important;
+    background: none !important;
+    backdrop-filter: none !important;
+    padding: 0 !important;
+    z-index: auto !important;
+  }
+  #quotationPrintModal .modal {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-shadow: none !important;
+    border: none !important;
+    background: none !important;
+    max-height: none !important;
+    overflow-y: visible !important;
+    padding: 0 !important;
+  }
+  #quotationPaper {
+    box-shadow: none !important;
+    padding: 0 !important;
+    width: 100% !important;
+    min-height: auto !important;
   }
 }
