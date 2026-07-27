@@ -58,29 +58,36 @@
     <h2 class="sec">ภาพรวมผลงานทีม</h2>
     <!-- Stats Cards Grid -->
     <div class="stats-grid">
-      <div class="stat">
-        <div class="stat-icon"><i class="fa-solid fa-folder-open"></i></div>
+      <div class="stat clickable" onclick="showPage('projects')">
+        <div class="stat-icon" style="color: var(--primary-red); background: var(--primary-red-light);"><i class="fa-solid fa-folder-open"></i></div>
         <div class="stat-info">
           <span class="stat-num" id="statProjects">0</span>
           <span class="stat-lbl">โปรเจกต์ทั้งหมด</span>
         </div>
       </div>
-      <div class="stat">
-        <div class="stat-icon"><i class="fa-solid fa-list-check"></i></div>
+      <div class="stat clickable" onclick="showPage('tasks')">
+        <div class="stat-icon" style="color: var(--high-color); background: #fff7ed;"><i class="fa-solid fa-list-check"></i></div>
         <div class="stat-info">
           <span class="stat-num" id="statPendingTasks">0</span>
           <span class="stat-lbl">งานรอดำเนินการ</span>
         </div>
       </div>
-      <div class="stat">
-        <div class="stat-icon"><i class="fa-solid fa-file-contract"></i></div>
+      <div class="stat clickable" onclick="showPage('customers')">
+        <div class="stat-icon" style="color: var(--medium-color); background: #fef3c7;"><i class="fa-solid fa-file-contract"></i></div>
         <div class="stat-info">
           <span class="stat-num" id="statExpiringContracts">0</span>
           <span class="stat-lbl">สัญญาใกล้หมด (30 วัน)</span>
         </div>
       </div>
-      <div class="stat">
-        <div class="stat-icon"><i class="fa-solid fa-users"></i></div>
+      <div class="stat clickable" onclick="showPage('quotations')">
+        <div class="stat-icon" style="color: var(--low-color); background: #ecfdf5;"><i class="fa-solid fa-file-invoice-dollar"></i></div>
+        <div class="stat-info">
+          <span class="stat-num" id="statQuotations" style="font-size: 19px; line-height: 1.2;">0 ใบ / ฿0</span>
+          <span class="stat-lbl">ยอดใบเสนอราคาที่ออก</span>
+        </div>
+      </div>
+      <div class="stat clickable" onclick="showPage('team')">
+        <div class="stat-icon" style="color: #6366f1; background: #e0e7ff;"><i class="fa-solid fa-users"></i></div>
         <div class="stat-info">
           <span class="stat-num" id="statTeamSize">0</span>
           <span class="stat-lbl">สมาชิกทีมงาน</span>
@@ -240,6 +247,7 @@
   <div class="page" id="page-quotations">
     <h2 class="sec">ระบบออกใบเสนอราคา (Quotations)
       <span class="toolbar">
+        <button type="button" onclick="exportCSVGeneric('quotations')"><i class="fa-solid fa-file-csv"></i> Export CSV</button>
         <button type="button" onclick="openCreateQuotationForm()"><i class="fa-solid fa-plus"></i> ออกใบเสนอราคาใหม่</button>
       </span>
     </h2>
@@ -366,6 +374,13 @@
           <div class="form-row">
             <label>รหัสผ่านเริ่มต้น * (อย่างน้อย 6 ตัวอักษร)</label>
             <input id="newUserPassword" type="password" placeholder="******" required>
+          </div>
+          <div class="form-row">
+            <label>บทบาทในระบบ *</label>
+            <select id="newUserRole" required style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); font-family: var(--font-family);">
+              <option value="staff" selected>พนักงาน (Staff)</option>
+              <option value="admin">หัวหน้างาน (Admin)</option>
+            </select>
           </div>
           <button type="submit" class="btn btn-primary" style="width: 100%"><i class="fa-solid fa-user-check"></i> สร้างบัญชี</button>
         </form>
