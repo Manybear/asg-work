@@ -118,19 +118,35 @@ function friendlyError(code) {
 
 onAuthStateChanged(auth, async (user) => {
   currentUser = user;
-  if (user) {
-    await loadProfile(user.uid, user.email);
-    document.getElementById('loginScreen').classList.remove('active-screen');
-    document.getElementById('appScreen').classList.add('active-screen');
-    document.getElementById('meLabel').innerHTML = `<i class="fa-solid fa-user-tie"></i> ${profile.name} ${profile.role === 'admin' ? '<span class="badge urgent" style="padding:1px 5px; font-size:9px">หัวหน้า</span>' : ''}`;
-    
-    await loadSettings();
-    await loadUsers();
-    initRealtimeListeners();
-    showPage('dashboard');
-  } else {
-    document.getElementById('loginScreen').classList.add('active-screen');
-    document.getElementById('appScreen').classList.remove('active-screen');
+  try {
+    if (user) {
+      await loadProfile(user.uid, user.email);
+      const loginScreen = document.getElementById('loginScreen');
+      if (loginScreen) loginScreen.classList.remove('active-screen');
+      const appScreen = document.getElementById('appScreen');
+      if (appScreen) appScreen.classList.add('active-screen');
+      
+      const meLabel = document.getElementById('meLabel');
+      if (meLabel) {
+        meLabel.innerHTML = `<i class="fa-solid fa-user-tie"></i> ${profile.name || 'ผู้ใช้งาน'} ${profile.role === 'admin' ? '<span class="badge urgent" style="padding:1px 5px; font-size:9px">หัวหน้า</span>' : ''}`;
+      }
+      
+      await loadSettings();
+      await loadUsers();
+      initRealtimeListeners();
+      showPage('dashboard');
+    } else {
+      const loginScreen = document.getElementById('loginScreen');
+      if (loginScreen) loginScreen.classList.add('active-screen');
+      const appScreen = document.getElementById('appScreen');
+      if (appScreen) appScreen.classList.remove('active-screen');
+    }
+  } catch (err) {
+    console.error("Auth initialization error: ", err);
+    const errBox = document.getElementById('loginError');
+    if (errBox) {
+      errBox.textContent = 'เกิดข้อผิดพลาดในการโหลดระบบ: ' + err.message;
+    }
   }
 });
 
@@ -140,7 +156,9 @@ async function loadProfile(uid, email) {
   if (snap.exists()) {
     profile = { uid, ...snap.data() };
   } else {
-    const newProfile = { name: email.split('@')[0], email, role: 'staff', createdAt: serverTimestamp() };
+    const safeEmail = email || '';
+    const safeName = safeEmail ? safeEmail.split('@')[0] : 'พนักงาน';
+    const newProfile = { name: safeName, email: safeEmail, role: 'staff', createdAt: serverTimestamp() };
     await setDoc(ref, newProfile);
     profile = { uid, ...newProfile };
   }
@@ -2155,3 +2173,18 @@ window.closeImageModal = function() {
   document.getElementById('imagePreviewModal').classList.remove('open');
 };
 
+// ---------- FINANCIAL UTILS ----------
+
+function formatMoney(num) {
+  return Number(num || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function escapeHtml(text) {
+  if (!text) return '';
+  return text.toString()
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
