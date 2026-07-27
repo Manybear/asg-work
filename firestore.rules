@@ -28,7 +28,8 @@ service cloud.firestore {
 
     match /dailyUpdates/{doc} {
       allow read: if isSignedIn();
-      allow write: if isSignedIn() && request.resource.data.uid == request.auth.uid;
+      allow create, update: if isSignedIn() && request.resource.data.uid == request.auth.uid;
+      allow delete: if isSignedIn() && resource.data.uid == request.auth.uid;
     }
 
     match /customers/{doc} {
