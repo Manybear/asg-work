@@ -1046,3 +1046,16 @@ h2.sec {
     min-height: auto !important;
   }
 }
+
+/* Flash highlight animation for cards when clicked from notifications */
+@keyframes flashCardHighlight {
+  0% { background-color: var(--primary-red-light); transform: scale(1.02); }
+  50% { background-color: var(--primary-red-light); transform: scale(1.02); }
+  100% { background-color: var(--card-bg); transform: scale(1.0); }
+}
+.highlight-flash {
+  animation: flashCardHighlight 2s ease-out;
+  border-color: var(--primary-red) !important;
+  box-shadow: 0 0 0 3px var(--primary-red-light) !important;
+  z-index: 10;
+}
