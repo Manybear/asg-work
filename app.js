@@ -50,6 +50,12 @@ let currentCalendarDate = new Date();
 
 document.addEventListener('DOMContentLoaded', () => {
   loadAppTheme();
+  
+  // Set default date for daily report filter to today in local timezone (YYYY-MM-DD)
+  const filterInput = document.getElementById('dailyReportDateFilter');
+  if (filterInput) {
+    filterInput.value = new Date().toISOString().slice(0, 10);
+  }
 });
 
 function loadAppTheme() {
@@ -534,7 +540,7 @@ window.openAddTaskModal = function(taskId = null) {
   
   // Populate dropdowns
   const projSelect = document.getElementById('taskProjectSelect');
-  projSelect.innerHTML = '<option value="">-- เลือกโครงการ --</option>' + 
+  projSelect.innerHTML = '<option value="">-- งานทั่วไป (ไม่มีโครงการ) --</option>' + 
     projectsCache.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
     
   // Populate related quotations
@@ -1686,12 +1692,11 @@ function initRealtimeListeners() {
   // 4. Daily updates listener
   onSnapshot(query(collection(db, 'dailyUpdates'), orderBy('date', 'desc')), (snap) => {
     updatesCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    filterAndRenderDailyUpdates();
     
     const uids = visibleUids();
-    const updates = uids ? updatesCache.filter(u => uids.includes(u.uid)) : updatesCache;
-    
-    renderDailyUpdates(updates);
-    renderTeamActivity(updates);
+    const updatesForFeed = uids ? updatesCache.filter(u => uids.includes(u.uid)) : updatesCache;
+    renderTeamActivity(updatesForFeed);
   });
 
   // 5. Quotations listener
@@ -1747,12 +1752,62 @@ window.filterAndRenderTasks = function() {
 };
 
 window.clearTaskFilters = function() {
+  // Reset quick filter button styles
+  document.querySelectorAll('.quick-filters-bar button').forEach(btn => {
+    btn.classList.remove('active-quick-filter');
+  });
+  const qfAll = document.getElementById('qfAll');
+  if (qfAll) qfAll.classList.add('active-quick-filter');
+
   document.getElementById('taskSearch').value = '';
   document.getElementById('filterProject').value = '';
   document.getElementById('filterAssignee').value = '';
   document.getElementById('filterStatus').value = '';
   document.getElementById('filterPriority').value = '';
   filterAndRenderTasks();
+};
+
+window.applyQuickFilter = function(filterType) {
+  // Update active button state
+  document.querySelectorAll('.quick-filters-bar button').forEach(btn => {
+    btn.classList.remove('active-quick-filter');
+  });
+  const activeBtn = document.getElementById('qf' + filterType.charAt(0).toUpperCase() + filterType.slice(1));
+  if (activeBtn) activeBtn.classList.add('active-quick-filter');
+  
+  // Reset manual inputs
+  const taskSearch = document.getElementById('taskSearch');
+  if (taskSearch) taskSearch.value = '';
+  const filterProject = document.getElementById('filterProject');
+  if (filterProject) filterProject.value = '';
+  const filterAssignee = document.getElementById('filterAssignee');
+  if (filterAssignee) filterAssignee.value = '';
+  const filterStatus = document.getElementById('filterStatus');
+  if (filterStatus) filterStatus.value = '';
+  const filterPriority = document.getElementById('filterPriority');
+  if (filterPriority) filterPriority.value = '';
+  
+  // Filter tasks based on selected quick filter
+  const uids = visibleUids();
+  let list = uids ? tasksCache.filter(t => {
+    const isAssigned = t.assignees ? t.assignees.includes(profile.uid) : (t.assignee === profile.uid);
+    return isAssigned;
+  }) : [...tasksCache];
+  
+  if (filterType === 'my') {
+    if (currentUser) {
+      list = list.filter(t => t.assignees ? t.assignees.includes(currentUser.uid) : (t.assignee === currentUser.uid));
+      if (filterAssignee) filterAssignee.value = currentUser.uid;
+    }
+  } else if (filterType === 'urgent') {
+    list = list.filter(t => t.priority === 'urgent' && t.status !== 'done');
+    if (filterPriority) filterPriority.value = 'urgent';
+  } else if (filterType === 'overdue') {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    list = list.filter(t => t.status !== 'done' && t.dueDate && t.dueDate < todayStr);
+  }
+  
+  renderTasksList(list);
 };
 
 window.filterAndRenderQuotations = function() {
@@ -1956,6 +2011,7 @@ function renderDailyUpdates(updates) {
     const userName = user ? user.name : 'ไม่ระบุผู้ใช้';
     const isOwner = currentUser && currentUser.uid === u.uid;
     const canManage = isOwner || (profile && profile.role === 'admin');
+    const escapedText = u.text.replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g, '\\n');
     
     return `
       <div class="card" style="margin-bottom: 8px;">
@@ -1964,18 +2020,64 @@ function renderDailyUpdates(updates) {
             <strong style="color:var(--primary-red); font-size:14px;"><i class="fa-solid fa-user-pen"></i> ${userName}</strong>
             <span class="ts" style="margin-left: 8px;"><i class="fa-solid fa-calendar-day"></i> ${u.date}</span>
           </div>
-          ${canManage ? `
-            <div style="display:flex; gap:6px;">
-              ${isOwner ? `<button class="icon-btn edit" onclick="editUpdate('${u.id}')"><i class="fa-solid fa-pen-to-square"></i> แก้ไข</button>` : ''}
-              <button class="icon-btn del" onclick="deleteUpdate('${u.id}')"><i class="fa-solid fa-trash"></i> ลบ</button>
-            </div>
-          ` : ''}
+          <div style="display:flex; gap:6px; align-items:center;">
+            <button class="btn btn-ghost btn-sm" onclick="sendIndividualUpdateToLine('${userName}', '${u.date}', '${escapedText}')" style="padding: 2px 8px; font-size:11px; color:#06c755; display:inline-flex; align-items:center; gap:3px;" title="แชร์อัปเดตของคนนี้เข้า LINE"><i class="fa-brands fa-line"></i> ส่ง LINE</button>
+            <button class="btn btn-ghost btn-sm" onclick="copyIndividualUpdateText('${userName}', '${u.date}', '${escapedText}')" style="padding: 2px 8px; font-size:11px; display:inline-flex; align-items:center; gap:3px;" title="คัดลอกข้อความอัปเดตของคนนี้"><i class="fa-regular fa-copy"></i> คัดลอก</button>
+            ${canManage ? `
+              <span style="border-left: 1px solid var(--border-color); height: 14px; margin: 0 4px;"></span>
+              ${isOwner ? `<button class="icon-btn edit" onclick="editUpdate('${u.id}')" style="font-size:11px;"><i class="fa-solid fa-pen-to-square"></i> แก้ไข</button>` : ''}
+              <button class="icon-btn del" onclick="deleteUpdate('${u.id}')" style="font-size:11px;"><i class="fa-solid fa-trash"></i> ลบ</button>
+            ` : ''}
+          </div>
         </div>
         <div style="font-size:13.5px; white-space:pre-wrap; line-height:1.5; color:var(--text-dark);">${escapeHtml(u.text)}</div>
       </div>
     `;
   }).join('');
 }
+
+window.filterAndRenderDailyUpdates = () => {
+  const dateFilterInput = document.getElementById('dailyReportDateFilter');
+  const selectedDate = dateFilterInput ? dateFilterInput.value : '';
+  
+  const uids = visibleUids();
+  let list = uids ? updatesCache.filter(u => uids.includes(u.uid)) : [...updatesCache];
+  
+  if (selectedDate) {
+    list = list.filter(u => u.date === selectedDate);
+  }
+  
+  renderDailyUpdates(list);
+};
+
+function formatIndividualUpdateMessage(name, dateStr, text) {
+  const dParts = dateStr.split('-');
+  let dateFormatted = dateStr;
+  if (dParts.length === 3) {
+    const dObj = new Date(dParts[0], dParts[1] - 1, dParts[2]);
+    dateFormatted = dObj.toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
+  }
+  return `📢 รายงานความคืบหน้าการทำงาน (รายบุคคล)\n` +
+         `👤 ผู้รายงาน: ${name}\n` +
+         `📅 ประจำวันที่: ${dateFormatted}\n` +
+         `📝 รายละเอียดอัปเดต:\n- ${text}\n\n` +
+         `🔗 ลิงก์ระบบ: https://manybear.github.io/asg-work/`;
+}
+
+window.sendIndividualUpdateToLine = (name, dateStr, text) => {
+  const msg = formatIndividualUpdateMessage(name, dateStr, text);
+  const lineUrl = `https://line.me/R/msg/text/?${encodeURIComponent(msg)}`;
+  window.open(lineUrl, '_blank');
+};
+
+window.copyIndividualUpdateText = (name, dateStr, text) => {
+  const msg = formatIndividualUpdateMessage(name, dateStr, text);
+  navigator.clipboard.writeText(msg).then(() => {
+    alert(`คัดลอกสรุปอัปเดตของ ${name} สำเร็จ!`);
+  }).catch(err => {
+    alert('ไม่สามารถคัดลอกได้: ' + err.message);
+  });
+};
 
 function renderTeamActivity(updates) {
   const box = document.getElementById('teamActivityFeed');
@@ -2246,6 +2348,63 @@ window.exportCSVGeneric = (type) => {
     });
     downloadCSV('asg-work-quotations.csv', rows);
   }
+};
+
+function generateDailyReportText() {
+  const filterInput = document.getElementById('dailyReportDateFilter');
+  const targetDateStr = filterInput ? filterInput.value : new Date().toISOString().slice(0, 10);
+  
+  if (!targetDateStr) return "";
+  
+  const todayUpdates = updatesCache.filter(u => u.date === targetDateStr);
+  if (todayUpdates.length === 0) return "";
+  
+  const dParts = targetDateStr.split('-');
+  let dateFormatted = targetDateStr;
+  if (dParts.length === 3) {
+    const dObj = new Date(dParts[0], dParts[1] - 1, dParts[2]);
+    dateFormatted = dObj.toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
+  }
+  
+  let msg = `📢 รายงานความคืบหน้าทีมงาน (Daily Standup)\n📅 ประจำวันที่: ${dateFormatted}\n\n`;
+  todayUpdates.forEach((u, index) => {
+    const user = usersCache.find(x => x.uid === u.uid);
+    const userName = user ? user.name : 'ไม่ระบุผู้ใช้';
+    msg += `👤 ${index + 1}. ${userName}\n` +
+           `📝 อัปเดต: ${u.text}\n\n`;
+  });
+  
+  msg += `🔗 ลิงก์ระบบ: https://manybear.github.io/asg-work/`;
+  return msg;
+}
+
+window.copyDailyReportText = () => {
+  const filterInput = document.getElementById('dailyReportDateFilter');
+  const targetDateStr = filterInput ? filterInput.value : '';
+  const msg = generateDailyReportText();
+  if (!msg) {
+    alert(targetDateStr ? 'วันที่เลือกนี้ยังไม่มีพนักงานคนใดบันทึกอัปเดตงานเข้ามาครับ' : 'วันนี้ยังไม่มีพนักงานคนใดบันทึกอัปเดตงานเข้ามาครับ');
+    return;
+  }
+  
+  navigator.clipboard.writeText(msg).then(() => {
+    alert('คัดลอกสรุปรายงานการทำงานวันนี้สำเร็จ! นำไปวางส่งในกลุ่มแชทภายนอกได้ทันที');
+  }).catch(err => {
+    alert('ไม่สามารถคัดลอกได้: ' + err.message);
+  });
+};
+
+window.sendDailyReportToLine = () => {
+  const filterInput = document.getElementById('dailyReportDateFilter');
+  const targetDateStr = filterInput ? filterInput.value : '';
+  const msg = generateDailyReportText();
+  if (!msg) {
+    alert(targetDateStr ? 'วันที่เลือกนี้ยังไม่มีพนักงานคนใดบันทึกอัปเดตงานเข้ามาครับ' : 'วันนี้ยังไม่มีพนักงานคนใดบันทึกอัปเดตงานเข้ามาครับ');
+    return;
+  }
+  
+  const lineUrl = `https://line.me/R/msg/text/?${encodeURIComponent(msg)}`;
+  window.open(lineUrl, '_blank');
 };
 
 window.printPage = (pageId) => {
