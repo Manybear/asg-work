@@ -143,7 +143,12 @@
       <button type="submit" id="projSubmitBtn"><i class="fa-solid fa-plus"></i> เพิ่มโปรเจกต์</button>
       <button type="button" class="btn btn-ghost cancel-edit-btn" id="projCancelBtn" onclick="cancelEditProject()">ยกเลิก</button>
     </form>
-    <div id="projectList" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px;"></div>
+    
+    <p class="ts" style="margin-bottom: 12px; color: var(--text-muted);">
+      💡 **การจัดการที่ง่ายขึ้น:** คุณสามารถมองเห็นและจัดการงานย่อย (Tasks) ทั้งหมดได้โดยตรงจากภายใต้การ์ดโปรเจกต์ด้านล่างนี้ทันที
+    </p>
+    
+    <div id="projectList" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 16px;"></div>
   </div>
 
   <!-- 3. TASKS PAGE -->
@@ -213,13 +218,20 @@
         <button type="button" onclick="printPage('page-customers')"><i class="fa-solid fa-print"></i> พิมพ์เอกสาร</button>
       </span>
     </h2>
-    <form class="form-inline" id="customerForm">
-      <input id="custName" placeholder="ชื่อบริษัทลูกค้า / ชื่องานสัญญา" required style="flex:1; min-width:200px">
-      <input id="custEndDate" type="date" required title="วันครบกำหนดสัญญา">
-      <input id="custReminderDays" type="number" placeholder="เตือนล่วงหน้า (วัน) เช่น 15" value="15" style="width: 100px">
-      <input id="custNote" placeholder="รายละเอียด/หมายเหตุการบริการ" style="flex:1.5; min-width:200px">
-      <button type="submit" id="custSubmitBtn"><i class="fa-solid fa-plus"></i> เพิ่มข้อมูลลูกค้า</button>
-      <button type="button" class="btn btn-ghost cancel-edit-btn" id="custCancelBtn" onclick="cancelEditCustomer()">ยกเลิก</button>
+    <form class="form-inline" id="customerForm" style="display: flex; flex-direction: column; align-items: stretch; gap: 10px;">
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
+        <input id="custName" placeholder="ชื่อบริษัทลูกค้า / ชื่องานสัญญา *" required>
+        <input id="custTaxId" placeholder="เลขประจำตัวผู้เสียภาษี (Tax ID)">
+        <input id="custPhone" placeholder="เบอร์โทรศัพท์ / ผู้ติดต่อ">
+        <input id="custEndDate" type="date" required title="วันครบกำหนดสัญญา">
+        <input id="custReminderDays" type="number" placeholder="เตือนล่วงหน้า (วัน) เช่น 15" value="15">
+      </div>
+      <textarea id="custAddress" placeholder="ที่อยู่บริษัทลูกค้าอย่างละเอียดสำหรับออกใบเสนอราคา..." style="width:100%; height:60px; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); font-family: var(--font-family); resize: vertical;"></textarea>
+      <input id="custNote" placeholder="รายละเอียด/หมายเหตุการบริการเพิ่มเติม" style="width: 100%;">
+      <div style="display:flex; justify-content:flex-end; gap:8px;">
+        <button type="submit" id="custSubmitBtn"><i class="fa-solid fa-plus"></i> บันทึกข้อมูลลูกค้า</button>
+        <button type="button" class="btn btn-ghost cancel-edit-btn" id="custCancelBtn" onclick="cancelEditCustomer()">ยกเลิก</button>
+      </div>
     </form>
     <div id="customerList" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px;"></div>
   </div>
@@ -232,7 +244,12 @@
       </span>
     </h2>
     
-    <!-- Creation Form (collapsible) -->
+    <!-- Search & Filter Bar for Quotations -->
+    <div class="filter-bar">
+      <input type="text" id="quotationSearch" placeholder="🔍 ค้นหารหัส หรือ ชื่อลูกค้า..." style="flex: 1; min-width: 200px;" oninput="filterAndRenderQuotations()">
+    </div>
+    
+    <!-- Creation/Edition Form (collapsible) -->
     <div class="card" id="quotationFormPanel" style="display:none; margin-bottom: 20px;">
       <h3 style="font-size:15px; font-weight:700; margin-bottom:15px;" id="quotationFormTitle">ออกใบเสนอราคา</h3>
       <form id="quotationForm">
@@ -248,7 +265,7 @@
         </div>
         <div class="form-row">
           <label>ชื่อลูกค้า / บริษัทผู้รับการเสนอราคา *</label>
-          <select id="qtCustomer" required style="width:100%; padding:10px; border-radius:8px; border:1px solid var(--border-color);"></select>
+          <select id="qtCustomer" required style="width:100%; padding:10px; border-radius:8px; border:1px solid var(--border-color);" onchange="onQuotationCustomerChange(this.value)"></select>
         </div>
         <div class="form-2col">
           <div class="form-row">
@@ -271,7 +288,7 @@
             <table style="width:100%; border-collapse:collapse; min-width: 500px;">
               <thead>
                 <tr style="background:#f1f5f9; font-weight:700; font-size:12px; border-bottom: 1px solid var(--border-color);">
-                  <th style="padding:10px;">รายละเอียดงาน / สินค้า</th>
+                  <th style="padding:10px;">รายละเอียดสินค้า / การบริการ</th>
                   <th width="90" style="padding:10px; text-align:center;">จำนวน</th>
                   <th width="120" style="padding:10px; text-align:right;">ราคา/หน่วย (บาท)</th>
                   <th width="120" style="padding:10px; text-align:right;">รวมจำนวนเงิน (บาท)</th>
@@ -309,7 +326,7 @@
     <div id="quotationList" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px;"></div>
   </div>
 
-  <!-- 7. DAILY UPDATES PAGE -->
+  <!-- 7. DAILY STANDUP PAGE -->
   <div class="page" id="page-updates">
     <h2 class="sec">บันทึกอัปเดตงานวันนี้ (Daily Standup)
       <span class="toolbar">
@@ -446,10 +463,10 @@
           </select>
         </div>
         <div class="form-row">
-          <label>ผู้รับผิดชอบงาน (Assignee) *</label>
-          <select id="taskAssigneeSelect" required>
-            <option value="">-- เลือกคนในทีม --</option>
-          </select>
+          <label>ผู้รับผิดชอบงาน (Assignees) * (เลือกได้มากกว่า 1 คน)</label>
+          <div id="taskAssigneesCheckboxes" style="display:flex; flex-direction:column; gap:6px; background:#fafafa; border:1px solid var(--border-color); padding:10px; border-radius:8px; max-height:120px; overflow-y:auto;">
+            <!-- Rendered dynamically -->
+          </div>
         </div>
       </div>
       <div class="form-2col">
@@ -480,6 +497,12 @@
           <label>กำหนดส่งงาน (Due Date) *</label>
           <input type="date" id="taskDueInput" required>
         </div>
+      </div>
+      <div class="form-row">
+        <label>ใบเสนอราคาที่เกี่ยวข้อง (ถ้ามี)</label>
+        <select id="taskQuotationSelect" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color);">
+          <option value="">-- เลือกใบเสนอราคา --</option>
+        </select>
       </div>
       <div class="form-row">
         <label>รูปภาพแนบสำหรับงาน (ขนาดรูปจะถูกย่อขนาดให้ประหยัดพื้นที่คลาวด์อัตโนมัติ)</label>
@@ -521,6 +544,7 @@
       <div>
         <p><strong>📅 กำหนดส่ง:</strong> <span id="detTaskDue" style="color:var(--text-dark)">-</span></p>
         <p style="margin-top: 4px;"><strong>👤 ผู้สั่งงาน:</strong> <span id="detTaskAssigner" style="color:var(--text-dark)">-</span></p>
+        <p style="margin-top: 4px;"><strong>📄 ใบเสนอราคา:</strong> <span id="detTaskQuotation" style="color:var(--text-dark)">-</span></p>
         <p style="margin-top: 4px;"><strong>📊 สถานะ:</strong> 
           <select id="detTaskStatusSelect" onchange="onModalStatusChange(this.value)" style="padding:2px 6px; border-radius:4px; font-size:12px; border:1px solid var(--border-color); background:#fff;">
             <option value="notyet">ยังไม่เริ่ม</option>
@@ -573,7 +597,11 @@
     <div class="form-row" style="border-top:1px solid var(--border-color); padding-top:15px">
       <label style="display:flex; justify-content:space-between; align-items:center;">
         <span><i class="fa-solid fa-clock-rotate-left"></i> ประวัติการบันทึกอัปเดตงาน (Task Timeline)</span>
-        <button class="btn btn-ghost btn-sm" onclick="sendTaskToLineShare()"><i class="fa-brands fa-line" style="color:#06c755;"></i> แชร์แจ้งเตือน LINE</button>
+        <div style="display:flex; gap:6px;">
+          <button class="btn btn-ghost btn-sm" onclick="sendTaskToLineShare()" title="ส่งเข้าแอป LINE โดยตรง"><i class="fa-brands fa-line" style="color:#06c755;"></i> ส่ง LINE</button>
+          <button class="btn btn-ghost btn-sm" onclick="copyTaskLineShareLink()" title="คัดลอกลิงก์แชร์ LINE"><i class="fa-solid fa-link"></i> คัดลอกลิงก์ LINE</button>
+          <button class="btn btn-ghost btn-sm" onclick="copyTaskInfoText()" title="คัดลอกรายละเอียดงานทั้งหมด"><i class="fa-regular fa-copy"></i> คัดลอกข้อความ</button>
+        </div>
       </label>
       <div class="comments-container" id="detTaskUpdatesTimeline" style="max-height:140px; margin-bottom:8px;"></div>
       
@@ -604,31 +632,3 @@
 <!-- C. IMAGE PREVIEW MODAL -->
 <div class="img-modal-bg" id="imagePreviewModal" onclick="closeImageModal()">
   <span class="close-img">&times;</span>
-  <img id="previewImageSrc" src="" alt="ขยายรูปภาพ" onclick="event.stopPropagation()">
-</div>
-
-<!-- D. QUOTATION PRINT PREVIEW MODAL -->
-<div class="modal-bg" id="quotationPrintModal">
-  <div class="modal" style="max-width:800px; background:#f1f5f9; padding:15px;">
-    <div style="background:#fff; padding:10px; border-radius:8px; display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; border:1px solid var(--border-color);">
-      <div>
-        <strong style="color:var(--primary-red); font-size:14px;"><i class="fa-solid fa-file-pdf"></i> พิมพ์ / ดาวน์โหลดใบเสนอราคา (A4)</strong>
-      </div>
-      <div style="display:flex; gap:8px;">
-        <button class="btn btn-primary btn-sm" onclick="downloadQuotationPDF()"><i class="fa-solid fa-download"></i> ดาวน์โหลด PDF</button>
-        <button class="btn btn-ghost btn-sm" onclick="triggerQuotationPrint()"><i class="fa-solid fa-print"></i> พิมพ์</button>
-        <button class="btn btn-ghost btn-sm" onclick="closeQuotationPrintModal()">ปิด</button>
-      </div>
-    </div>
-    
-    <!-- Printable Paper -->
-    <div id="quotationPaper" style="background:#fff; padding:20mm 15mm; min-height:297mm; color:#000; font-family:'Inter', 'Mitr', sans-serif; box-shadow:0 4px 10px rgba(0,0,0,0.08); border-radius:4px; overflow:auto;">
-      <!-- Dynamic A4 content -->
-    </div>
-  </div>
-</div>
-
-<!-- Firebase scripts -->
-<script type="module" src="app.js"></script>
-</body>
-</html>
