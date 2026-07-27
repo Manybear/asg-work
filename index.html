@@ -304,8 +304,9 @@
           </div>
         </div>
         <div class="form-row">
-          <label>ชื่อลูกค้า / บริษัทผู้รับการเสนอราคา *</label>
-          <select id="qtCustomer" required style="width:100%; padding:10px; border-radius:8px; border:1px solid var(--border-color);" onchange="onQuotationCustomerChange(this.value)"></select>
+          <label>ชื่อลูกค้า / บริษัทผู้รับการเสนอราคา * (พิมพ์เองได้ หรือเลือกจากรายการที่มี)</label>
+          <input type="text" id="qtCustomer" list="customersDatalist" placeholder="พิมพ์ชื่อลูกค้า/บริษัท หรือเลือกจากรายการ..." required style="width:100%; padding:10px; border-radius:8px; border:1px solid var(--border-color); background: #fff; color: var(--text-dark);">
+          <datalist id="customersDatalist"></datalist>
         </div>
         <div class="form-2col">
           <div class="form-row">
