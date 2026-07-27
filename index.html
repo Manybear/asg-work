@@ -162,7 +162,7 @@
   <div class="page" id="page-tasks">
     <h2 class="sec">รายการงานขององค์กร
       <span class="toolbar">
-        <button type="button" onclick="openAddTaskModal()"><i class="fa-solid fa-plus"></i> มอบหมายงานใหม่</button>
+        <button type="button" onclick="openAddTaskModal()"><i class="fa-solid fa-plus"></i> เพิ่มงาน</button>
         <button type="button" onclick="exportCSVGeneric('tasks')"><i class="fa-solid fa-file-csv"></i> Export CSV</button>
       </span>
     </h2>
@@ -380,6 +380,11 @@
         <button type="button" onclick="printPage('page-updates')"><i class="fa-solid fa-print"></i> พิมพ์รายงานวันนี้</button>
       </span>
     </h2>
+    <!-- Quick Activity Log Form -->
+    <form class="form-inline" id="quickActivityForm" style="margin-bottom: 20px; background: #f8fafc; padding: 12px; border-radius: 8px; border: 1px solid var(--border-color); display: flex; gap: 8px; align-items: center;">
+      <input type="text" id="quickActivityText" placeholder="✍️ พิมพ์บันทึกกิจกรรมย่อย/งานด่วนวันนี้... (เช่น ติดต่อขนส่ง, เคลียร์เอกสาร, วางบิล)" style="flex: 1; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border-color); outline: none; font-size: 13.5px; background: #fff; color: var(--text-dark);" required>
+      <button type="submit" style="white-space: nowrap; padding: 8px 16px;"><i class="fa-solid fa-plus"></i> บันทึกด่วน</button>
+    </form>
     <div id="updateList" style="display: flex; flex-direction: column; gap: 12px;"></div>
   </div>
 
@@ -493,7 +498,7 @@
 <!-- A. ADD/EDIT TASK MODAL -->
 <div class="modal-bg" id="taskModal">
   <div class="modal">
-    <h2 id="modalTaskTitle">มอบหมายงานใหม่</h2>
+    <h2 id="modalTaskTitle">เพิ่มงาน</h2>
     <form id="taskFormSubmit">
       <div class="form-row">
         <label>ชื่องาน / ภารกิจ *</label>
@@ -569,7 +574,7 @@
       </div>
       <div class="modal-btns">
         <button type="button" class="btn btn-ghost" onclick="closeAddTaskModal()">ยกเลิก</button>
-        <button type="submit" class="btn btn-primary" id="taskSubmitBtnText">มอบหมายงาน</button>
+        <button type="submit" class="btn btn-primary" id="taskSubmitBtnText">เพิ่มงาน</button>
       </div>
     </form>
   </div>
