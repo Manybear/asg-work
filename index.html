@@ -632,3 +632,31 @@
 <!-- C. IMAGE PREVIEW MODAL -->
 <div class="img-modal-bg" id="imagePreviewModal" onclick="closeImageModal()">
   <span class="close-img">&times;</span>
+  <img id="previewImageSrc" src="" alt="ขยายรูปภาพ" onclick="event.stopPropagation()">
+</div>
+
+<!-- D. QUOTATION PRINT PREVIEW MODAL -->
+<div class="modal-bg" id="quotationPrintModal">
+  <div class="modal" style="max-width:800px; background:#f1f5f9; padding:15px;">
+    <div style="background:#fff; padding:10px; border-radius:8px; display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; border:1px solid var(--border-color);">
+      <div>
+        <strong style="color:var(--primary-red); font-size:14px;"><i class="fa-solid fa-file-pdf"></i> พิมพ์ / ดาวน์โหลดใบเสนอราคา (A4)</strong>
+      </div>
+      <div style="display:flex; gap:8px;">
+        <button class="btn btn-primary btn-sm" onclick="downloadQuotationPDF()"><i class="fa-solid fa-download"></i> ดาวน์โหลด PDF</button>
+        <button class="btn btn-ghost btn-sm" onclick="triggerQuotationPrint()"><i class="fa-solid fa-print"></i> พิมพ์</button>
+        <button class="btn btn-ghost btn-sm" onclick="closeQuotationPrintModal()">ปิด</button>
+      </div>
+    </div>
+    
+    <!-- Printable Paper -->
+    <div id="quotationPaper" style="background:#fff; padding:20mm 15mm; min-height:297mm; color:#000; font-family:'Inter', 'Mitr', sans-serif; box-shadow:0 4px 10px rgba(0,0,0,0.08); border-radius:4px; overflow:auto;">
+      <!-- Dynamic A4 content -->
+    </div>
+  </div>
+</div>
+
+<!-- Firebase scripts -->
+<script type="module" src="app.js"></script>
+</body>
+</html>
