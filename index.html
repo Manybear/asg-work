@@ -42,7 +42,7 @@
     <button class="nav-btn" data-page="calendar" onclick="showPage('calendar')">ปฏิทินงาน</button>
     <button class="nav-btn" data-page="customers" onclick="showPage('customers')">ลูกค้า/สัญญา</button>
     <button class="nav-btn" data-page="quotations" onclick="showPage('quotations')">ใบเสนอราคา</button>
-    <button class="nav-btn" data-page="updates" onclick="showPage('updates')">อัปเดตรายวัน</button>
+    <button class="nav-btn" data-page="updates" onclick="showPage('updates')">ประวัติการทำงาน</button>
     <button class="nav-btn" data-page="team" onclick="showPage('team')">รายชื่อทีม</button>
     <button class="nav-btn" data-page="settings" onclick="showPage('settings')">ตั้งค่า</button>
     <div class="spacer"></div>
@@ -368,7 +368,7 @@
 
   <!-- 7. DAILY STANDUP PAGE -->
   <div class="page" id="page-updates">
-    <h2 class="sec">บันทึกอัปเดตงานวันนี้ (Daily Standup)
+    <h2 class="sec">ประวัติการทำงาน & กิจกรรมในระบบ (History Feed)
       <span class="toolbar" style="gap: 8px; flex-wrap: wrap;">
         <span style="font-size: 13px; font-weight: normal; display: inline-flex; align-items: center; gap: 6px; color: var(--text-muted); margin-right: 8px;">
           📅 เลือกวันที่รายงาน: 
@@ -377,14 +377,9 @@
         <button type="button" onclick="sendDailyReportToLine()" style="background:#06c755; color:#fff;"><i class="fa-brands fa-line"></i> ส่งไลน์รายงานวันนี้</button>
         <button type="button" onclick="copyDailyReportText()"><i class="fa-regular fa-copy"></i> คัดลอกสรุปรายงาน</button>
         <button type="button" onclick="exportCSVGeneric('updates')"><i class="fa-solid fa-file-csv"></i> Export CSV</button>
-        <button type="button" onclick="printPage('page-updates')"><i class="fa-solid fa-print"></i> พิมพ์อัปเดตวันนี้</button>
+        <button type="button" onclick="printPage('page-updates')"><i class="fa-solid fa-print"></i> พิมพ์รายงานวันนี้</button>
       </span>
     </h2>
-    <form class="form-inline" id="updateForm">
-      <textarea id="updateText" placeholder="วันนี้ทำอะไรเสร็จไปบ้าง มีปัญหาอุปสรรคตรงไหน และแผนงานวันพรุ่งนี้คืออะไร..." style="flex:1; min-width:300px;" required></textarea>
-      <button type="submit" id="updateSubmitBtn"><i class="fa-solid fa-paper-plane"></i> บันทึกอัปเดต</button>
-      <button type="button" class="btn btn-ghost cancel-edit-btn" id="updateCancelBtn" onclick="cancelEditUpdate()">ยกเลิก</button>
-    </form>
     <div id="updateList" style="display: flex; flex-direction: column; gap: 12px;"></div>
   </div>
 
