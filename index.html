@@ -44,8 +44,24 @@ nav{background:var(--purple);color:#fff;display:flex;align-items:center;padding:
 .badge.notyet{background:var(--red-light);color:var(--red)}
 .ts{font-size:12px;color:var(--gray3);margin-top:2px}
 .muted{color:var(--gray3);padding:10px 0}
-h2.sec{color:var(--purple);font-size:16px;margin-bottom:12px}
+h2.sec{color:var(--purple);font-size:16px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
 #adminPanel{margin-top:20px;padding-top:16px;border-top:1px solid var(--gray2)}
+.card{position:relative}
+.card-actions{display:flex;gap:6px;margin-top:8px}
+.icon-btn{border:none;background:var(--gray);color:#444;padding:4px 10px;border-radius:6px;font-size:12px;cursor:pointer}
+.icon-btn.edit{background:var(--blue-light);color:var(--blue-dark)}
+.icon-btn.del{background:var(--red-light);color:var(--red)}
+.toolbar{display:flex;gap:8px}
+.toolbar button{border:none;background:var(--gray);color:#444;padding:6px 12px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer}
+.cancel-edit-btn{display:none;background:var(--gray2)!important;color:#333!important}
+.form-inline.editing{outline:2px solid var(--orange);outline-offset:2px}
+@media print{
+  nav,.form-inline,.toolbar,#notifBanner,.card-actions,#bellBtn{display:none!important}
+  body{background:#fff}
+  .page{display:none !important;max-width:100%}
+  .page.printing{display:block !important}
+  .card{box-shadow:none;border:1px solid #ccc}
+}
 </style>
 </head>
 <body>
@@ -85,43 +101,60 @@ h2.sec{color:var(--purple);font-size:16px;margin-bottom:12px}
 </div>
 
 <div class="page" id="page-projects">
-  <h2 class="sec">โปรเจกต์</h2>
+  <h2 class="sec">โปรเจกต์
+    <span class="toolbar"><button type="button" onclick="exportCSVGeneric('projects')">📥 Export CSV</button><button type="button" onclick="printPage('page-projects')">🖨️ พิมพ์</button></span>
+  </h2>
   <form class="form-inline" id="projectForm">
     <input id="projName" placeholder="ชื่อโปรเจกต์" required>
     <input id="projStart" type="date" required>
     <input id="projDue" type="date" required>
-    <button type="submit">+ เพิ่มโปรเจกต์</button>
+    <select id="projStatus">
+      <option value="planning">วางแผน</option>
+      <option value="inprog">กำลังทำ</option>
+      <option value="done">เสร็จแล้ว</option>
+    </select>
+    <button type="submit" id="projSubmitBtn">+ เพิ่มโปรเจกต์</button>
+    <button type="button" class="cancel-edit-btn" id="projCancelBtn" onclick="cancelEditProject()">ยกเลิกแก้ไข</button>
   </form>
   <div id="projectList"></div>
 
-  <h2 class="sec" style="margin-top:24px">งานย่อย</h2>
+  <h2 class="sec" style="margin-top:24px">งานย่อย
+    <span class="toolbar"><button type="button" onclick="exportCSVGeneric('tasks')">📥 Export CSV</button></span>
+  </h2>
   <form class="form-inline" id="taskForm">
     <select id="taskProject" required></select>
     <input id="taskTitle" placeholder="ชื่องาน" required>
     <select id="taskAssignee" class="assigneeSelect" required></select>
     <input id="taskDue" type="date" required>
-    <button type="submit">+ เพิ่มงาน</button>
+    <button type="submit" id="taskSubmitBtn">+ เพิ่มงาน</button>
+    <button type="button" class="cancel-edit-btn" id="taskCancelBtn" onclick="cancelEditTask()">ยกเลิกแก้ไข</button>
   </form>
   <div id="taskList"></div>
 </div>
 
 <div class="page" id="page-updates">
-  <h2 class="sec">อัปเดตงานวันนี้</h2>
+  <h2 class="sec">อัปเดตงานวันนี้
+    <span class="toolbar"><button type="button" onclick="exportCSVGeneric('updates')">📥 Export CSV</button><button type="button" onclick="printPage('page-updates')">🖨️ พิมพ์</button></span>
+  </h2>
   <form class="form-inline" id="updateForm">
     <textarea id="updateText" placeholder="วันนี้ทำอะไรไปบ้าง..." style="flex:1;min-width:200px" required></textarea>
-    <button type="submit">บันทึก</button>
+    <button type="submit" id="updateSubmitBtn">บันทึก</button>
+    <button type="button" class="cancel-edit-btn" id="updateCancelBtn" onclick="cancelEditUpdate()">ยกเลิกแก้ไข</button>
   </form>
   <div id="updateList"></div>
 </div>
 
 <div class="page" id="page-customers">
-  <h2 class="sec">ลูกค้า & สัญญา</h2>
+  <h2 class="sec">ลูกค้า & สัญญา
+    <span class="toolbar"><button type="button" onclick="exportCSVGeneric('customers')">📥 Export CSV</button><button type="button" onclick="printPage('page-customers')">🖨️ พิมพ์</button></span>
+  </h2>
   <form class="form-inline" id="customerForm">
     <input id="custName" placeholder="ชื่อลูกค้า" required>
     <input id="custEndDate" type="date" required>
     <input id="custReminderDays" type="number" placeholder="แจ้งเตือนล่วงหน้า (วัน) เช่น 15" value="15">
     <input id="custNote" placeholder="โน้ต (ถ้ามี)">
-    <button type="submit">+ เพิ่มลูกค้า</button>
+    <button type="submit" id="custSubmitBtn">+ เพิ่มลูกค้า</button>
+    <button type="button" class="cancel-edit-btn" id="custCancelBtn" onclick="cancelEditCustomer()">ยกเลิกแก้ไข</button>
   </form>
   <div id="customerList"></div>
 </div>
