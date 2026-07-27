@@ -1,190 +1,449 @@
 <!DOCTYPE html>
 <html lang="th">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ASG Work</title>
-<style>
-*{margin:0;padding:0;box-sizing:border-box}
-:root{
-  --purple:#8989eb;--purple-light:#e8e7fc;--purple-dark:#5a5ab8;
-  --orange:#f46524;--green:#11734b;--green-light:#d4edbc;
-  --red:#c0392b;--red-light:#fde8e8;--blue-light:#bfe1f6;--blue-dark:#0a53a8;
-  --gray:#f5f5f5;--gray2:#e0e0e0;--gray3:#888;
-  --font:'Segoe UI',Arial,sans-serif;
-}
-body{font-family:var(--font);background:#f0f0f8;color:#1f1f1f;font-size:14px}
-.screen{display:none}
-.active-screen{display:block}
-#loginScreen.active-screen{min-height:100vh;display:flex;align-items:center;justify-content:center}
-.login-box{background:#fff;border-radius:16px;padding:36px;width:min(360px,90vw);box-shadow:0 8px 32px rgba(0,0,0,.12)}
-.login-box h1{color:var(--purple);font-size:20px;margin-bottom:20px;text-align:center}
-.login-box input{width:100%;padding:10px 12px;border:1px solid var(--gray2);border-radius:8px;margin-bottom:12px;font-size:14px}
-.login-box button{width:100%;padding:10px;border:none;border-radius:8px;background:var(--purple);color:#fff;font-weight:600;cursor:pointer}
-.err{color:var(--red);font-size:12px;margin-bottom:8px;min-height:16px}
-nav{background:var(--purple);color:#fff;display:flex;align-items:center;padding:0 16px;height:54px;gap:6px;position:sticky;top:0;z-index:100;flex-wrap:wrap}
-.logo{font-weight:700;letter-spacing:1px;margin-right:10px}
-.nav-btn{background:rgba(255,255,255,.15);border:none;color:#fff;padding:6px 12px;border-radius:20px;cursor:pointer;font-size:12px;font-weight:600}
-.nav-btn.active{background:#fff;color:var(--purple)}
-.spacer{flex:1}
-.bell{position:relative;background:rgba(255,255,255,.15);border:none;color:#fff;padding:6px 12px;border-radius:20px;cursor:pointer;font-size:16px}
-#notifCount{position:absolute;top:-4px;right:-4px;background:var(--red);color:#fff;font-size:10px;border-radius:10px;padding:1px 5px;display:none}
-#notifBanner{display:none;position:absolute;right:16px;top:56px;background:#fff;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.15);width:280px;max-height:300px;overflow-y:auto;z-index:200}
-#notifBanner.open{display:block}
-.notif-item{padding:10px 14px;border-bottom:1px solid #f0f0f0;font-size:13px}
-.page{display:none;padding:20px;max-width:900px;margin:0 auto}
-.page.active{display:block}
-.card{background:#fff;border-radius:12px;padding:16px;box-shadow:0 1px 4px rgba(0,0,0,.08);margin-bottom:10px}
-.form-inline{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;background:#fff;padding:14px;border-radius:12px}
-.form-inline input,.form-inline select,.form-inline textarea{padding:8px 10px;border:1px solid var(--gray2);border-radius:8px;font-size:13px;font-family:var(--font)}
-.form-inline button{padding:8px 16px;border:none;border-radius:8px;background:var(--purple);color:#fff;font-weight:600;cursor:pointer}
-.badge{display:inline-block;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:600}
-.badge.done{background:var(--green-light);color:var(--green)}
-.badge.inprog{background:var(--blue-light);color:var(--blue-dark)}
-.badge.notyet{background:var(--red-light);color:var(--red)}
-.ts{font-size:12px;color:var(--gray3);margin-top:2px}
-.muted{color:var(--gray3);padding:10px 0}
-h2.sec{color:var(--purple);font-size:16px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
-#adminPanel{margin-top:20px;padding-top:16px;border-top:1px solid var(--gray2)}
-.card{position:relative}
-.card-actions{display:flex;gap:6px;margin-top:8px}
-.icon-btn{border:none;background:var(--gray);color:#444;padding:4px 10px;border-radius:6px;font-size:12px;cursor:pointer}
-.icon-btn.edit{background:var(--blue-light);color:var(--blue-dark)}
-.icon-btn.del{background:var(--red-light);color:var(--red)}
-.toolbar{display:flex;gap:8px}
-.toolbar button{border:none;background:var(--gray);color:#444;padding:6px 12px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer}
-.cancel-edit-btn{display:none;background:var(--gray2)!important;color:#333!important}
-.form-inline.editing{outline:2px solid var(--orange);outline-offset:2px}
-@media print{
-  nav,.form-inline,.toolbar,#notifBanner,.card-actions,#bellBtn{display:none!important}
-  body{background:#fff}
-  .page{display:none !important;max-width:100%}
-  .page.printing{display:block !important}
-  .card{box-shadow:none;border:1px solid #ccc}
-}
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ASG Work — ระบบจัดการงานทีม</title>
+  <!-- Google Fonts: Inter (English/Numbers) + Mitr (Modern Thai) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Mitr:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Main Stylesheet -->
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-<!-- LOGIN -->
+<!-- LOGIN SCREEN -->
 <div id="loginScreen" class="screen active-screen">
   <div class="login-box">
-    <h1>ASG Work</h1>
+    <h1>ASG WORK</h1>
     <form id="loginForm">
       <div class="err" id="loginError"></div>
-      <input type="email" id="loginEmail" placeholder="อีเมล" required>
+      <input type="email" id="loginEmail" placeholder="อีเมลองค์กร" required>
       <input type="password" id="loginPassword" placeholder="รหัสผ่าน" required>
       <button type="submit">เข้าสู่ระบบ</button>
     </form>
   </div>
 </div>
 
-<!-- APP -->
+<!-- APP SCREEN -->
 <div id="appScreen" class="screen">
-<nav>
-  <span class="logo">ASG WORK</span>
-  <button class="nav-btn active" data-page="dashboard" onclick="showPage('dashboard')">Dashboard</button>
-  <button class="nav-btn" data-page="projects" onclick="showPage('projects')">โปรเจกต์</button>
-  <button class="nav-btn" data-page="updates" onclick="showPage('updates')">อัปเดตรายวัน</button>
-  <button class="nav-btn" data-page="customers" onclick="showPage('customers')">ลูกค้า/สัญญา</button>
-  <button class="nav-btn" data-page="settings" onclick="showPage('settings')">ตั้งค่า</button>
-  <div class="spacer"></div>
-  <button class="bell" id="bellBtn">🔔<span id="notifCount">0</span></button>
-  <span id="meLabel" style="font-size:12px"></span>
-  <button class="nav-btn" id="logoutBtn">ออกจากระบบ</button>
-</nav>
-<div id="notifBanner"></div>
+  <nav>
+    <span class="logo"><i class="fa-solid fa-square-poll-vertical"></i> ASG WORK</span>
+    <button class="nav-btn active" data-page="dashboard" onclick="showPage('dashboard')">Dashboard</button>
+    <button class="nav-btn" data-page="projects" onclick="showPage('projects')">โปรเจกต์</button>
+    <button class="nav-btn" data-page="tasks" onclick="showPage('tasks')">รายการงาน</button>
+    <button class="nav-btn" data-page="customers" onclick="showPage('customers')">ลูกค้า/สัญญา</button>
+    <button class="nav-btn" data-page="updates" onclick="showPage('updates')">อัปเดตรายวัน</button>
+    <button class="nav-btn" data-page="team" onclick="showPage('team')">รายชื่อทีม</button>
+    <button class="nav-btn" data-page="settings" onclick="showPage('settings')">ตั้งค่า</button>
+    <div class="spacer"></div>
+    <button class="bell" id="bellBtn">🔔<span id="notifCount">0</span></button>
+    <span id="meLabel" style="font-size:13px; font-weight: 600; margin: 0 10px; color: var(--text-dark)"></span>
+    <button class="nav-btn" id="logoutBtn" style="color: var(--urgent-color)"><i class="fa-solid fa-right-from-bracket"></i></button>
+  </nav>
+  
+  <div id="notifBanner"></div>
 
-<div class="page active" id="page-dashboard">
-  <h2 class="sec">ภาพรวม</h2>
-  <p class="muted">แดชบอร์ดสรุปผลงาน — ต่อยอดกราฟ/สถิติเพิ่มได้ภายหลังจากข้อมูลใน projects, tasks, customers</p>
-</div>
+  <!-- 1. DASHBOARD PAGE -->
+  <div class="page active" id="page-dashboard">
+    <h2 class="sec">ภาพรวมผลงานทีม</h2>
+    <!-- Stats Cards Grid -->
+    <div class="stats-grid">
+      <div class="stat">
+        <div class="stat-icon"><i class="fa-solid fa-folder-open"></i></div>
+        <div class="stat-info">
+          <span class="stat-num" id="statProjects">0</span>
+          <span class="stat-lbl">โปรเจกต์ทั้งหมด</span>
+        </div>
+      </div>
+      <div class="stat">
+        <div class="stat-icon"><i class="fa-solid fa-list-check"></i></div>
+        <div class="stat-info">
+          <span class="stat-num" id="statPendingTasks">0</span>
+          <span class="stat-lbl">งานรอดำเนินการ</span>
+        </div>
+      </div>
+      <div class="stat">
+        <div class="stat-icon"><i class="fa-solid fa-file-contract"></i></div>
+        <div class="stat-info">
+          <span class="stat-num" id="statExpiringContracts">0</span>
+          <span class="stat-lbl">สัญญาใกล้หมด (30 วัน)</span>
+        </div>
+      </div>
+      <div class="stat">
+        <div class="stat-icon"><i class="fa-solid fa-users"></i></div>
+        <div class="stat-info">
+          <span class="stat-num" id="statTeamSize">0</span>
+          <span class="stat-lbl">สมาชิกทีมงาน</span>
+        </div>
+      </div>
+    </div>
 
-<div class="page" id="page-projects">
-  <h2 class="sec">โปรเจกต์
-    <span class="toolbar"><button type="button" onclick="exportCSVGeneric('projects')">📥 Export CSV</button><button type="button" onclick="printPage('page-projects')">🖨️ พิมพ์</button></span>
-  </h2>
-  <form class="form-inline" id="projectForm">
-    <input id="projName" placeholder="ชื่อโปรเจกต์" required>
-    <input id="projStart" type="date" required>
-    <input id="projDue" type="date" required>
-    <select id="projStatus">
-      <option value="planning">วางแผน</option>
-      <option value="inprog">กำลังทำ</option>
-      <option value="done">เสร็จแล้ว</option>
-    </select>
-    <button type="submit" id="projSubmitBtn">+ เพิ่มโปรเจกต์</button>
-    <button type="button" class="cancel-edit-btn" id="projCancelBtn" onclick="cancelEditProject()">ยกเลิกแก้ไข</button>
-  </form>
-  <div id="projectList"></div>
+    <!-- Main Grid Row -->
+    <div class="db-row">
+      <!-- Chart Card -->
+      <div class="card">
+        <h3 style="font-size:15px; font-weight:700; margin-bottom:15px"><i class="fa-solid fa-chart-pie" style="color:var(--primary-red)"></i> สัดส่วนความคืบหน้างานทีม</h3>
+        <div style="max-height:220px; display:flex; justify-content:center; align-items:center;">
+          <canvas id="dashboardChart" style="max-width:200px; max-height:200px;"></canvas>
+        </div>
+      </div>
+      <!-- Today's Checklist Card -->
+      <div class="card">
+        <h3 style="font-size:15px; font-weight:700; margin-bottom:15px"><i class="fa-solid fa-circle-exclamation" style="color:var(--urgent-color)"></i> งานเลยกำหนด/ใกล้ส่ง (≤ 3 วัน)</h3>
+        <div id="urgentDashboardList" style="max-height:220px; overflow-y:auto;">
+          <p class="muted">ไม่มีงานเร่งด่วน</p>
+        </div>
+      </div>
+    </div>
 
-  <h2 class="sec" style="margin-top:24px">งานย่อย
-    <span class="toolbar"><button type="button" onclick="exportCSVGeneric('tasks')">📥 Export CSV</button></span>
-  </h2>
-  <form class="form-inline" id="taskForm">
-    <select id="taskProject" required></select>
-    <input id="taskTitle" placeholder="ชื่องาน" required>
-    <select id="taskAssignee" class="assigneeSelect" required></select>
-    <input id="taskDue" type="date" required>
-    <button type="submit" id="taskSubmitBtn">+ เพิ่มงาน</button>
-    <button type="button" class="cancel-edit-btn" id="taskCancelBtn" onclick="cancelEditTask()">ยกเลิกแก้ไข</button>
-  </form>
-  <div id="taskList"></div>
-</div>
-
-<div class="page" id="page-updates">
-  <h2 class="sec">อัปเดตงานวันนี้
-    <span class="toolbar"><button type="button" onclick="exportCSVGeneric('updates')">📥 Export CSV</button><button type="button" onclick="printPage('page-updates')">🖨️ พิมพ์</button></span>
-  </h2>
-  <form class="form-inline" id="updateForm">
-    <textarea id="updateText" placeholder="วันนี้ทำอะไรไปบ้าง..." style="flex:1;min-width:200px" required></textarea>
-    <button type="submit" id="updateSubmitBtn">บันทึก</button>
-    <button type="button" class="cancel-edit-btn" id="updateCancelBtn" onclick="cancelEditUpdate()">ยกเลิกแก้ไข</button>
-  </form>
-  <div id="updateList"></div>
-</div>
-
-<div class="page" id="page-customers">
-  <h2 class="sec">ลูกค้า & สัญญา
-    <span class="toolbar"><button type="button" onclick="exportCSVGeneric('customers')">📥 Export CSV</button><button type="button" onclick="printPage('page-customers')">🖨️ พิมพ์</button></span>
-  </h2>
-  <form class="form-inline" id="customerForm">
-    <input id="custName" placeholder="ชื่อลูกค้า" required>
-    <input id="custEndDate" type="date" required>
-    <input id="custReminderDays" type="number" placeholder="แจ้งเตือนล่วงหน้า (วัน) เช่น 15" value="15">
-    <input id="custNote" placeholder="โน้ต (ถ้ามี)">
-    <button type="submit" id="custSubmitBtn">+ เพิ่มลูกค้า</button>
-    <button type="button" class="cancel-edit-btn" id="custCancelBtn" onclick="cancelEditCustomer()">ยกเลิกแก้ไข</button>
-  </form>
-  <div id="customerList"></div>
-</div>
-
-<div class="page" id="page-settings">
-  <h2 class="sec">ตั้งค่า</h2>
-  <div class="card">
-    <label style="font-weight:600;font-size:13px">การมองเห็นงานของคนอื่น</label><br>
-    <select id="visibilitySelect" style="margin-top:8px;padding:8px;border-radius:8px;border:1px solid var(--gray2)">
-      <option value="private">ส่วนตัวล้วน (เห็นแค่งานตัวเอง ยกเว้นหัวหน้า)</option>
-      <option value="adminOnly">หัวหน้าเห็นทุกคน (ค่าเริ่มต้น)</option>
-      <option value="public">เปิดให้ทุกคนเห็นกันหมด</option>
-    </select>
-    <p class="ts">ตั้งค่านี้เปลี่ยนได้เฉพาะหัวหน้า</p>
+    <!-- Bottom Row Grid -->
+    <div class="db-row">
+      <!-- Project Progress Card -->
+      <div class="card">
+        <h3 style="font-size:15px; font-weight:700; margin-bottom:15px"><i class="fa-solid fa-bars-progress" style="color:var(--low-color)"></i> ความคืบหน้าโครงการ</h3>
+        <div id="projectDashboardList" style="max-height: 300px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px;">
+          <p class="muted">ไม่มีโครงการที่เปิดอยู่</p>
+        </div>
+      </div>
+      <!-- Team Activity Feed Card -->
+      <div class="card">
+        <h3 style="font-size:15px; font-weight:700; margin-bottom:15px"><i class="fa-solid fa-newspaper" style="color:var(--high-color)"></i> ความเคลื่อนไหวรายวันของทีม</h3>
+        <div class="feed-container" id="teamActivityFeed">
+          <p class="muted">ไม่มีความเคลื่อนไหววันนี้</p>
+        </div>
+      </div>
+    </div>
   </div>
-  <div id="adminPanel" style="display:none">
-    <h2 class="sec">จัดการผู้ใช้ (หัวหน้าเท่านั้น)</h2>
-    <form class="form-inline" id="addUserForm">
-      <input id="newUserName" placeholder="ชื่อพนักงาน" required>
-      <input id="newUserEmail" type="email" placeholder="อีเมล" required>
-      <input id="newUserPassword" type="password" placeholder="รหัสผ่านเริ่มต้น" required>
-      <button type="submit">+ สร้างบัญชี</button>
+
+  <!-- 2. PROJECTS PAGE -->
+  <div class="page" id="page-projects">
+    <h2 class="sec">การจัดการโครงการ (Projects)</h2>
+    <form class="form-inline" id="projectForm">
+      <input id="projName" placeholder="ชื่อโครงการ" required style="flex:1; min-width:200px">
+      <select id="projCustomer" style="min-width:180px">
+        <option value="">-- เลือกผูกกับลูกค้า (ถ้ามี) --</option>
+      </select>
+      <input id="projStart" type="date" required title="วันเริ่มโครงการ">
+      <input id="projDue" type="date" required title="กำหนดส่งโครงการ">
+      <select id="projStatus" style="min-width:120px">
+        <option value="planning">วางแผน</option>
+        <option value="inprog">กำลังทำ</option>
+        <option value="done">เสร็จแล้ว</option>
+      </select>
+      <button type="submit" id="projSubmitBtn"><i class="fa-solid fa-plus"></i> เพิ่มโปรเจกต์</button>
+      <button type="button" class="btn btn-ghost cancel-edit-btn" id="projCancelBtn" onclick="cancelEditProject()">ยกเลิก</button>
     </form>
-    <div class="err" id="addUserError"></div>
-    <p class="ts">หมายเหตุ: การสร้างบัญชีใหม่จะสลับให้ระบบล็อกอินเป็นบัญชีนั้นชั่วคราว ให้ล็อกอินกลับเป็นบัญชีหัวหน้าอีกครั้งหลังสร้างเสร็จ (ข้อจำกัดของ Firebase ฝั่ง client — ทำครั้งเดียวตอนตั้งทีม 10 คนแรกก็พอ)</p>
+    <div id="projectList" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px;"></div>
+  </div>
+
+  <!-- 3. TASKS PAGE -->
+  <div class="page" id="page-tasks">
+    <h2 class="sec">รายการงานขององค์กร
+      <span class="toolbar">
+        <button type="button" onclick="openAddTaskModal()"><i class="fa-solid fa-plus"></i> มอบหมายงานใหม่</button>
+        <button type="button" onclick="exportCSVGeneric('tasks')"><i class="fa-solid fa-file-csv"></i> Export CSV</button>
+      </span>
+    </h2>
+
+    <!-- Search & Filter Bar -->
+    <div class="filter-bar">
+      <input type="text" id="taskSearch" placeholder="🔍 ค้นหาชื่องาน..." style="flex: 1; min-width:180px;" oninput="filterAndRenderTasks()">
+      <select id="filterProject" onchange="filterAndRenderTasks()">
+        <option value="">ทุกโปรเจกต์</option>
+      </select>
+      <select id="filterAssignee" onchange="filterAndRenderTasks()">
+        <option value="">ทุกคนในทีม</option>
+      </select>
+      <select id="filterStatus" onchange="filterAndRenderTasks()">
+        <option value="">ทุกสถานะ</option>
+        <option value="notyet">ยังไม่เริ่ม</option>
+        <option value="inprog">กำลังทำ</option>
+        <option value="done">เสร็จแล้ว</option>
+      </select>
+      <select id="filterPriority" onchange="filterAndRenderTasks()">
+        <option value="">ทุกความเร่งด่วน</option>
+        <option value="urgent">ด่วนที่สุด</option>
+        <option value="high">สูง</option>
+        <option value="mid">กลาง</option>
+        <option value="low">ต่ำ</option>
+      </select>
+      <button class="btn btn-ghost" onclick="clearTaskFilters()" style="padding: 6px 12px; font-size:12px;">ล้างตัวกรอง</button>
+    </div>
+
+    <!-- Tasks Grid List -->
+    <div id="taskList" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px;">
+      <p class="muted">ยังไม่มีงานที่ตรงกับตัวกรอง</p>
+    </div>
+  </div>
+
+  <!-- 4. CUSTOMERS PAGE -->
+  <div class="page" id="page-customers">
+    <h2 class="sec">ลูกค้า & สัญญาบริการ (Contracts)
+      <span class="toolbar">
+        <button type="button" onclick="exportCSVGeneric('customers')"><i class="fa-solid fa-file-csv"></i> Export CSV</button>
+        <button type="button" onclick="printPage('page-customers')"><i class="fa-solid fa-print"></i> พิมพ์เอกสาร</button>
+      </span>
+    </h2>
+    <form class="form-inline" id="customerForm">
+      <input id="custName" placeholder="ชื่อบริษัทลูกค้า / ชื่องานสัญญา" required style="flex:1; min-width:200px">
+      <input id="custEndDate" type="date" required title="วันครบกำหนดสัญญา">
+      <input id="custReminderDays" type="number" placeholder="เตือนล่วงหน้า (วัน) เช่น 15" value="15" style="width: 100px">
+      <input id="custNote" placeholder="รายละเอียด/หมายเหตุการบริการ" style="flex:1.5; min-width:200px">
+      <button type="submit" id="custSubmitBtn"><i class="fa-solid fa-plus"></i> เพิ่มข้อมูลลูกค้า</button>
+      <button type="button" class="btn btn-ghost cancel-edit-btn" id="custCancelBtn" onclick="cancelEditCustomer()">ยกเลิก</button>
+    </form>
+    <div id="customerList" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px;"></div>
+  </div>
+
+  <!-- 5. DAILY UPDATES PAGE -->
+  <div class="page" id="page-updates">
+    <h2 class="sec">บันทึกอัปเดตงานวันนี้ (Daily Standup)
+      <span class="toolbar">
+        <button type="button" onclick="exportCSVGeneric('updates')"><i class="fa-solid fa-file-csv"></i> Export CSV</button>
+        <button type="button" onclick="printPage('page-updates')"><i class="fa-solid fa-print"></i> พิมพ์อัปเดตวันนี้</button>
+      </span>
+    </h2>
+    <form class="form-inline" id="updateForm">
+      <textarea id="updateText" placeholder="วันนี้ทำอะไรเสร็จไปบ้าง มีปัญหาอุปสรรคตรงไหน และแผนงานวันพรุ่งนี้คืออะไร..." style="flex:1; min-width:300px;" required></textarea>
+      <button type="submit" id="updateSubmitBtn"><i class="fa-solid fa-paper-plane"></i> บันทึกอัปเดต</button>
+      <button type="button" class="btn btn-ghost cancel-edit-btn" id="updateCancelBtn" onclick="cancelEditUpdate()">ยกเลิก</button>
+    </form>
+    <div id="updateList" style="display: flex; flex-direction: column; gap: 12px;"></div>
+  </div>
+
+  <!-- 6. TEAM DIRECTORY PAGE -->
+  <div class="page" id="page-team">
+    <h2 class="sec">รายชื่อสมาชิกทีมงาน (Team Directory)</h2>
+    <div style="display: grid; grid-template-columns: 1.5fr 1fr; gap: 24px; align-items: start;">
+      <!-- Users List -->
+      <div class="card" style="margin-bottom: 0;">
+        <h3 style="font-size:15px; font-weight:700; margin-bottom:15px"><i class="fa-solid fa-user-group"></i> รายชื่อพนักงาน</h3>
+        <div id="teamMemberList" style="display: flex; flex-direction: column; gap: 12px;"></div>
+      </div>
+      <!-- Add User Form (Admin only) -->
+      <div class="card" id="adminPanel" style="display:none; margin-bottom: 0;">
+        <h3 style="font-size:15px; font-weight:700; margin-bottom:15px; color: var(--primary-red)"><i class="fa-solid fa-user-plus"></i> เพิ่มบัญชีพนักงานใหม่ (หัวหน้าเท่านั้น)</h3>
+        <form id="addUserForm">
+          <div class="form-row">
+            <label>ชื่อ-นามสกุลพนักงาน *</label>
+            <input id="newUserName" placeholder="ชื่อแสดงในระบบ" required>
+          </div>
+          <div class="form-row">
+            <label>อีเมล *</label>
+            <input id="newUserEmail" type="email" placeholder="email@company.com" required>
+          </div>
+          <div class="form-row">
+            <label>รหัสผ่านเริ่มต้น * (อย่างน้อย 6 ตัวอักษร)</label>
+            <input id="newUserPassword" type="password" placeholder="******" required>
+          </div>
+          <button type="submit" class="btn btn-primary" style="width: 100%"><i class="fa-solid fa-user-check"></i> สร้างบัญชี</button>
+        </form>
+        <div class="err" id="addUserError" style="margin-top: 10px;"></div>
+        <p class="ts" style="border-top: 1px solid var(--border-color); padding-top: 10px; margin-top: 10px; line-height: 1.4;">
+          💡 **ระบบแอดมินอัปเกรดใหม่:** หัวหน้างานสามารถสร้างบัญชีให้ลูกน้องได้ทันทีในขั้นตอนนี้ โดยระบบจะสร้างบัญชีให้พนักงานแบบอัตโนมัติเบื้องหลัง และจะ **ไม่ทำการเตะหัวหน้าออกจากระบบ** (ไม่ต้องทำการล็อกอินใหม่เหมือนระบบเวอร์ชันเก่าแล้ว)
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 7. SETTINGS PAGE -->
+  <div class="page" id="page-settings">
+    <h2 class="sec">การตั้งค่าระบบ</h2>
+    <div class="card">
+      <h3 style="font-size:15px; font-weight:700; margin-bottom:15px"><i class="fa-solid fa-eye"></i> สิทธิ์ความเป็นส่วนตัวและการมองเห็นงาน</h3>
+      <select id="visibilitySelect" style="width:100%; max-width:400px; padding:10px; border-radius:8px; border:1px solid var(--border-color)">
+        <option value="private">ความเป็นส่วนตัวสูง (พนักงานเห็นเฉพาะงานที่ได้รับมอบหมายเท่านั้น)</option>
+        <option value="adminOnly">หัวหน้างานเห็นทุกคน (พนักงานเห็นเฉพาะงานตัวเอง)</option>
+        <option value="public">องค์กรโปร่งใส (ทุกคนในทีมสามารถเห็นการ์ดงานของกันและกันได้)</option>
+      </select>
+      <p class="ts" style="margin-top: 8px;">* เฉพาะผู้ใช้ที่มีบทบาทเป็นแอดมิน (หัวหน้า) เท่านั้นที่สามารถแก้ไขค่าการมองเห็นนี้ได้</p>
+    </div>
+
+    <!-- Theme Color settings (Employee level) -->
+    <div class="card">
+      <h3 style="font-size:15px; font-weight:700; margin-bottom:8px"><i class="fa-solid fa-palette"></i> ธีมสีแอปพลิเคชันส่วนตัว (Theme Color)</h3>
+      <p class="ts">เลือกสีที่ชอบเพื่อตกแต่งหน้าจอของคุณ (จะบันทึกไว้สำหรับคอมพิวเตอร์เครื่องนี้แยกรายบุคคล)</p>
+      <div class="theme-picker-grid">
+        <!-- Polite Red (Default) -->
+        <button type="button" class="theme-color-btn" onclick="setAppTheme('#b91c1c')" style="background:#b91c1c;" title="แดงสุภาพ"></button>
+        <!-- Deep Purple -->
+        <button type="button" class="theme-color-btn" onclick="setAppTheme('#5a5ab8')" style="background:#5a5ab8;" title="ม่วงคราม"></button>
+        <!-- Royal Blue -->
+        <button type="button" class="theme-color-btn" onclick="setAppTheme('#1d4ed8')" style="background:#1d4ed8;" title="น้ำเงินกรมท่า"></button>
+        <!-- Mint Green -->
+        <button type="button" class="theme-color-btn" onclick="setAppTheme('#059669')" style="background:#059669;" title="เขียวมินต์"></button>
+        <!-- Warm Orange -->
+        <button type="button" class="theme-color-btn" onclick="setAppTheme('#ea580c')" style="background:#ea580c;" title="ส้มอิฐ"></button>
+        <!-- Dark Slate -->
+        <button type="button" class="theme-color-btn" onclick="setAppTheme('#334155')" style="background:#334155;" title="เทาเท่ห์"></button>
+        <!-- Custom Hex Input -->
+        <input type="color" id="themeCustomPicker" onchange="setAppTheme(this.value)" style="border:1px solid var(--border-color); border-radius:50%; width:32px; height:32px; padding:1px; cursor:pointer;" title="สีพิเศษ">
+      </div>
+    </div>
   </div>
 </div>
 
+<!-- ================= MODALS ================= -->
+
+<!-- A. ADD/EDIT TASK MODAL -->
+<div class="modal-bg" id="taskModal">
+  <div class="modal">
+    <h2 id="modalTaskTitle">มอบหมายงานใหม่</h2>
+    <form id="taskFormSubmit">
+      <div class="form-row">
+        <label>ชื่องาน / ภารกิจ *</label>
+        <input type="text" id="taskTitleInput" placeholder="พิมพ์ชื่องานสั้นๆ ได้ใจความ" required>
+      </div>
+      <div class="form-row">
+        <label>รายละเอียดและขอบข่ายงาน</label>
+        <textarea id="taskDescInput" placeholder="เขียนรายละเอียดขอบเขตงานหรือเงื่อนไขพิเศษ..."></textarea>
+      </div>
+      <div class="form-2col">
+        <div class="form-row">
+          <label>โครงการ (Project) *</label>
+          <select id="taskProjectSelect" required>
+            <option value="">-- เลือกโครงการ --</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label>ผู้รับผิดชอบงาน (Assignee) *</label>
+          <select id="taskAssigneeSelect" required>
+            <option value="">-- เลือกคนในทีม --</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-2col">
+        <div class="form-row">
+          <label>ระดับความเร่งด่วน *</label>
+          <select id="taskPrioritySelect" required>
+            <option value="low">ต่ำ (ทั่วไป)</option>
+            <option value="mid" selected>กลาง (สำคัญ)</option>
+            <option value="high">สูง (เร่งด่วน)</option>
+            <option value="urgent">ด่วนที่สุด (Urgent)</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label>กำหนดส่งงาน (Due Date) *</label>
+          <input type="date" id="taskDueInput" required>
+        </div>
+      </div>
+      <div class="form-row">
+        <label>รูปภาพแนบสำหรับงาน (ขนาดรูปจะถูกย่อขนาดให้ประหยัดพื้นที่คลาวด์อัตโนมัติ)</label>
+        <div class="attach-area" onclick="document.getElementById('taskImageFile').click()">
+          <span style="font-size:13px; color:var(--text-muted)"><i class="fa-solid fa-paperclip"></i> คลิกเลือกไฟล์ภาพ หรือ ลากภาพมาวางที่นี่</span>
+          <input type="file" id="taskImageFile" accept="image/*" onchange="handleTaskImageUpload(event)">
+        </div>
+        <div class="attach-preview" id="taskImagePreview"></div>
+      </div>
+      <div class="form-row">
+        <label style="display:flex; justify-content:space-between; align-items:center;">
+          <span>ลิงก์เอกสารอ้างอิง (เช่น Google Drive, Canva, โซเชียลมีเดีย)</span>
+          <button type="button" class="icon-btn" onclick="addModalLinkInput()" style="padding:2px 8px; font-size:11px"><i class="fa-solid fa-plus"></i> เพิ่มลิงก์</button>
+        </label>
+        <div id="taskLinksContainer"></div>
+      </div>
+      <div class="modal-btns">
+        <button type="button" class="btn btn-ghost" onclick="closeAddTaskModal()">ยกเลิก</button>
+        <button type="submit" class="btn btn-primary" id="taskSubmitBtnText">มอบหมายงาน</button>
+      </div>
+    </form>
+  </div>
 </div>
 
+<!-- B. TASK DETAILS & INTERACTIVE MODAL (Real-time comments + subtasks) -->
+<div class="modal-bg" id="taskDetailsModal">
+  <div class="modal" style="max-width:680px">
+    <div style="display:flex; justify-content:space-between; align-items:start; border-bottom:1px solid var(--border-color); padding-bottom:10px; margin-bottom:15px">
+      <h2 id="detTaskTitle" style="border:none; margin:0; padding:0; flex:1">ชื่องานตัวอย่าง</h2>
+      <span class="badge" id="detTaskPriorityBadge" style="margin-left:10px;">ด่วน</span>
+    </div>
+    
+    <div class="form-2col" style="font-size:13px; color:var(--text-muted); margin-bottom:15px; background:#f8fafc; padding:12px; border-radius:8px; border:1px solid var(--border-color)">
+      <div>
+        <p><strong>📂 โปรเจกต์:</strong> <span id="detTaskProject" style="color:var(--text-dark)">-</span></p>
+        <p style="margin-top: 4px;"><strong>👤 ผู้รับผิดชอบ:</strong> <span id="detTaskAssignee" style="color:var(--text-dark)">-</span></p>
+      </div>
+      <div>
+        <p><strong>📅 กำหนดส่ง:</strong> <span id="detTaskDue" style="color:var(--text-dark)">-</span></p>
+        <p style="margin-top: 4px;"><strong>📊 สถานะ:</strong> 
+          <select id="detTaskStatusSelect" onchange="onModalStatusChange(this.value)" style="padding:2px 6px; border-radius:4px; font-size:12px; border:1px solid var(--border-color); background:#fff;">
+            <option value="notyet">ยังไม่เริ่ม</option>
+            <option value="inprog">กำลังทำ</option>
+            <option value="done">เสร็จแล้ว</option>
+          </select>
+        </p>
+      </div>
+    </div>
+
+    <!-- Description -->
+    <div class="form-row">
+      <label>รายละเอียดงาน</label>
+      <div id="detTaskDesc" class="task-detail-desc">ไม่มีรายละเอียดระบุไว้</div>
+    </div>
+
+    <!-- Subtasks Checklist -->
+    <div class="form-row" style="border-top:1px solid var(--border-color); padding-top:15px">
+      <label style="display:flex; justify-content:space-between; align-items:center;">
+        <span><i class="fa-solid fa-list-check"></i> รายการงานย่อย (Checklist)</span>
+        <span class="ts" id="detTaskProgressText">ความคืบหน้า 0%</span>
+      </label>
+      
+      <!-- Custom Progress Bar -->
+      <div class="progress-container" style="margin-bottom:12px;">
+        <div class="progress-bar-bg">
+          <div class="progress-bar-fill" id="detTaskProgressBar" style="width: 0%"></div>
+        </div>
+      </div>
+
+      <div id="detTaskSubtaskList" style="max-height:160px; overflow-y:auto; margin-bottom:10px;"></div>
+      
+      <!-- Quick add subtask -->
+      <div style="display:flex; gap:8px">
+        <input type="text" id="newSubtaskText" placeholder="พิมพ์งานย่อยชิ้นใหม่..." style="flex:1; padding:8px 12px; border:1px solid var(--border-color); border-radius:8px; font-size:13px">
+        <button class="btn btn-ghost" onclick="addNewSubtaskClick()" style="padding:8px 14px; font-size:13px"><i class="fa-solid fa-plus"></i> เพิ่ม</button>
+      </div>
+    </div>
+
+    <!-- Uploaded image & Links -->
+    <div class="form-row" id="detTaskMediaRow" style="border-top:1px solid var(--border-color); padding-top:15px; display:none;">
+      <label><i class="fa-solid fa-photo-film"></i> รูปภาพและลิงก์แนบ</label>
+      <div style="display:flex; gap:12px; align-items:start; flex-wrap:wrap; margin-top:6px">
+        <div id="detTaskImageContainer"></div>
+        <div id="detTaskLinksContainer" style="flex:1; display:flex; flex-direction:column; gap:6px;"></div>
+      </div>
+    </div>
+
+    <!-- Task Real-time Chat/Comments -->
+    <div class="form-row" style="border-top:1px solid var(--border-color); padding-top:15px">
+      <label><i class="fa-solid fa-comments"></i> บันทึกโต้ตอบ & คอมเมนต์งานย่อย</label>
+      <div class="comments-container" id="detTaskComments"></div>
+      
+      <!-- New comment input -->
+      <div style="display:flex; gap:8px; margin-top:12px">
+        <textarea id="newCommentText" placeholder="เขียนคำชี้แจง คอมเมนต์งาน หรือบอกปัญหา..." style="flex:1; padding:8px 12px; border:1px solid var(--border-color); border-radius:8px; font-size:13px; height:45px; resize:none; font-family:var(--font-family)"></textarea>
+        <button class="btn btn-primary" onclick="postTaskCommentClick()" style="padding:10px 16px; font-size:13px"><i class="fa-solid fa-paper-plane"></i> ส่ง</button>
+      </div>
+    </div>
+
+    <div class="modal-btns" style="margin-top:20px; border-top:1px solid var(--border-color); padding-top:12px">
+      <button class="btn btn-ghost" onclick="closeTaskDetailsModal()">ปิดหน้าต่าง</button>
+    </div>
+  </div>
+</div>
+
+<!-- C. IMAGE PREVIEW MODAL -->
+<div class="img-modal-bg" id="imagePreviewModal" onclick="closeImageModal()">
+  <span class="close-img">&times;</span>
+  <img id="previewImageSrc" src="" alt="ขยายรูปภาพ" onclick="event.stopPropagation()">
+</div>
+
+<!-- Firebase scripts -->
 <script type="module" src="app.js"></script>
 </body>
 </html>
