@@ -340,8 +340,21 @@ window.showPage = function (page) {
   
   document.getElementById('notifBanner').classList.remove('open');
   
+  // Close mobile navigation dropdown on select
+  const navLinks = document.getElementById('navLinks');
+  if (navLinks) {
+    navLinks.classList.remove('show');
+  }
+
   if (page === 'calendar') {
     renderCalendar();
+  }
+};
+
+window.toggleMobileMenu = function() {
+  const navLinks = document.getElementById('navLinks');
+  if (navLinks) {
+    navLinks.classList.toggle('show');
   }
 };
 
