@@ -1882,13 +1882,15 @@ function formatIndividualGroupedMessage(name, dateStr, detailsText) {
          `🔗 ลิงก์ระบบ: https://manybear.github.io/asg-work/`;
 }
 
-window.sendIndividualGroupedUpdateToLine = (name, dateStr, detailsText) => {
+window.sendIndividualGroupedUpdateToLine = (name, dateStr, encodedDetails) => {
+  const detailsText = decodeURIComponent(encodedDetails);
   const msg = formatIndividualGroupedMessage(name, dateStr, detailsText);
   const lineUrl = `https://line.me/R/msg/text/?${encodeURIComponent(msg)}`;
   window.open(lineUrl, '_blank');
 };
 
-window.copyIndividualGroupedUpdateText = (name, dateStr, detailsText) => {
+window.copyIndividualGroupedUpdateText = (name, dateStr, encodedDetails) => {
+  const detailsText = decodeURIComponent(encodedDetails);
   const msg = formatIndividualGroupedMessage(name, dateStr, detailsText);
   navigator.clipboard.writeText(msg).then(() => {
     alert(`คัดลอกสรุปอัปเดตของ ${name} สำเร็จ!`);
@@ -2338,7 +2340,7 @@ function renderDailyUpdates(updates) {
       return `- ${displayTime} ${u.text}`;
     }).join('\n');
     
-    const escapedText = reportDetailsText.replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g, '\\n');
+    const encodedText = encodeURIComponent(reportDetailsText);
     
     return `
       <div class="card" style="margin-bottom: 12px; border-left: 4px solid var(--primary-red); padding: 12px;">
@@ -2348,8 +2350,8 @@ function renderDailyUpdates(updates) {
             <span class="ts" style="margin-left: 10px; font-size:12px; color:var(--text-muted);"><i class="fa-solid fa-calendar-day"></i> ${dateStr}</span>
           </div>
           <div style="display:flex; gap:6px; align-items:center;">
-            <button class="btn btn-ghost btn-sm" onclick="sendIndividualGroupedUpdateToLine('${userName}', '${dateStr}', '${escapedText}')" style="padding: 3px 8px; font-size:11px; color:#06c755; display:inline-flex; align-items:center; gap:3px;" title="ส่งไลน์รายงานความคืบหน้าของพนักงานคนนี้"><i class="fa-brands fa-line"></i> ส่ง LINE</button>
-            <button class="btn btn-ghost btn-sm" onclick="copyIndividualGroupedUpdateText('${userName}', '${dateStr}', '${escapedText}')" style="padding: 3px 8px; font-size:11px; display:inline-flex; align-items:center; gap:3px;" title="คัดลอกรายงานของพนักงานคนนี้"><i class="fa-regular fa-copy"></i> คัดลอก</button>
+            <button class="btn btn-ghost btn-sm" onclick="sendIndividualGroupedUpdateToLine('${userName}', '${dateStr}', '${encodedText}')" style="padding: 3px 8px; font-size:11px; color:#06c755; display:inline-flex; align-items:center; gap:3px;" title="ส่งไลน์รายงานความคืบหน้าของพนักงานคนนี้"><i class="fa-brands fa-line"></i> ส่ง LINE</button>
+            <button class="btn btn-ghost btn-sm" onclick="copyIndividualGroupedUpdateText('${userName}', '${dateStr}', '${encodedText}')" style="padding: 3px 8px; font-size:11px; display:inline-flex; align-items:center; gap:3px;" title="คัดลอกรายงานของพนักงานคนนี้"><i class="fa-regular fa-copy"></i> คัดลอก</button>
           </div>
         </div>
         <ul style="margin: 0; padding-left: 4px;">
