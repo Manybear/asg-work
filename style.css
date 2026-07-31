@@ -963,20 +963,109 @@ h2.sec {
 }
 .calendar-task-item {
   font-size: 10.5px;
-  padding: 2px 4px;
+  padding: 4px 6px;
   border-radius: 4px;
-  color: #fff;
+  color: var(--text-dark);
+  background: #f8fafc;
+  border: 1px solid var(--border-color);
+  border-left: 3px solid var(--text-muted); /* Fallback */
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   cursor: pointer;
-  font-weight: 700;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
 }
-.calendar-task-item.urgent { background-color: var(--urgent-color); }
-.calendar-task-item.high { background-color: var(--high-color); }
-.calendar-task-item.mid { background-color: var(--medium-color); }
-.calendar-task-item.low { background-color: var(--low-color); }
-.calendar-task-item.done { background-color: var(--low-color); opacity: 0.7; text-decoration: line-through; }
+.calendar-task-item.urgent { border-left-color: var(--urgent-color); }
+.calendar-task-item.high { border-left-color: var(--high-color); }
+.calendar-task-item.mid { border-left-color: var(--medium-color); }
+.calendar-task-item.low { border-left-color: var(--low-color); }
+.calendar-task-item.done { 
+  opacity: 0.55; 
+  text-decoration: line-through; 
+  background: #f1f5f9; 
+  border-left-color: #cbd5e1;
+}
+
+/* Employee Initial Avatar styling inside Calendar cards */
+.avatar-initial {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  font-size: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+/* Calendar Split Dashboard container */
+.calendar-container {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 16px;
+  align-items: start;
+}
+.calendar-main-card {
+  min-height: 520px;
+}
+.calendar-sidebar-card {
+  border-top: 4px solid var(--primary-red);
+}
+
+/* Sidebar Alert items */
+.sidebar-alert-item {
+  display: flex;
+  align-items: start;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 6px;
+  background: #f8fafc;
+  border: 1px solid var(--border-color);
+  margin-bottom: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.sidebar-alert-item:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  transform: translateX(2px);
+}
+.sidebar-alert-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-dark);
+}
+.sidebar-alert-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+.sidebar-alert-status {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 4px;
+  margin-top: 4px;
+  display: inline-block;
+}
+
+.view-toggle button.active {
+  background: #fff !important;
+  color: var(--primary-red) !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+@media (max-width: 1024px) {
+  .calendar-container {
+    grid-template-columns: 1fr !important;
+  }
+}
 
 /* A4 PRINT AND PDF LAYOUTS */
 #quotationPrintModal .modal {
