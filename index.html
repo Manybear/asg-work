@@ -244,19 +244,50 @@
 
   <!-- 4. CALENDAR PAGE -->
   <div class="page" id="page-calendar">
-    <h2 class="sec">ปฏิทินส่งมอบงาน (Calendar)
+    <h2 class="sec">ปฏิทินส่งมอบงาน & ควบคุมสัญญา
       <span class="toolbar">
         <button type="button" onclick="changeMonth(-1)"><i class="fa-solid fa-chevron-left"></i> เดือนก่อนหน้า</button>
         <span id="calendarMonthLabel" style="font-weight:700; font-size:16px; margin: 0 10px;"></span>
         <button type="button" onclick="changeMonth(1)">เดือนถัดไป <i class="fa-solid fa-chevron-right"></i></button>
       </span>
     </h2>
-    <div class="card" style="padding: 10px; overflow-x:auto;">
-      <div style="min-width: 700px;">
-        <div class="calendar-grid-header">
-          <div>อา.</div><div>จ.</div><div>อ.</div><div>พ.</div><div>พฤ.</div><div>ศ.</div><div>ส.</div>
+    
+    <!-- Filter Bar & View Toggle -->
+    <div class="filter-bar" style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+      <label for="calendarFilterAssignee" style="font-size: 13px; font-weight: 600; color: var(--text-dark); display: inline-flex; align-items: center; gap: 4px;"><i class="fa-solid fa-filter"></i> กรองตามคนรับผิดชอบ:</label>
+      <select id="calendarFilterAssignee" onchange="renderCalendar()" style="padding: 6px 12px; border-radius: 8px; border: 1px solid var(--border-color); font-size: 13px; outline: none; background: #fff; min-width: 180px;">
+        <option value="">ทุกคนในทีม (ทั้งหมด)</option>
+      </select>
+      
+      <div class="view-toggle" style="display: flex; gap: 4px; background: #f1f5f9; padding: 4px; border-radius: 8px; margin-left: 12px;">
+        <button type="button" id="btnCalendarMonthView" class="active" onclick="switchCalendarView('month')" style="border: none; background: transparent; padding: 4px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.2s;">รายเดือน</button>
+        <button type="button" id="btnCalendarWeekView" onclick="switchCalendarView('week')" style="border: none; background: transparent; padding: 4px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.2s;">รายสัปดาห์</button>
+      </div>
+
+      <div style="display:flex; gap:16px; margin-left:auto; font-size:12px; font-weight:600; flex-wrap: wrap;">
+        <span style="display:flex; align-items:center; gap:4px;"><span style="width:10px; height:10px; border-left: 3px solid var(--text-dark); background:#f8fafc; border-radius:1px; display:inline-block;"></span> คิวส่งงานทีม</span>
+        <span style="display:flex; align-items:center; gap:4px;"><span style="width:10px; height:10px; border-left: 3px solid #ef4444; background:#fef2f2; border-radius:1px; display:inline-block;"></span> สัญญาลูกค้าหมดอายุ</span>
+      </div>
+    </div>
+
+    <!-- Calendar Layout Container -->
+    <div class="calendar-container">
+      <!-- Left Side: Calendar Grid -->
+      <div class="card calendar-main-card" style="padding: 16px; overflow-x:auto;">
+        <div style="min-width: 600px;">
+          <div class="calendar-grid-header">
+            <div>อา.</div><div>จ.</div><div>อ.</div><div>พ.</div><div>พฤ.</div><div>ศ.</div><div>ส.</div>
+          </div>
+          <div id="calendarDaysGrid" class="calendar-grid-days"></div>
         </div>
-        <div id="calendarDaysGrid" class="calendar-grid-days"></div>
+      </div>
+      
+      <!-- Right Side: Sidebar Task Alerts Panel -->
+      <div class="card calendar-sidebar-card" style="padding: 16px; max-height: 520px; overflow-y: auto;">
+        <h3 style="font-size:14px; font-weight:700; margin-bottom:12px; border-bottom: 2px solid var(--border-color); padding-bottom:8px; display:flex; align-items:center; gap:6px; color:var(--text-dark);"><i class="fa-solid fa-triangle-exclamation" style="color:var(--primary-red)"></i> แจ้งเตือนสัญญากดส่งงาน</h3>
+        <div id="calendarAlertList">
+          <p class="muted" style="font-size: 12px;">กำลังประมวลผลข้อมูลการแจ้งเตือน...</p>
+        </div>
       </div>
     </div>
   </div>
