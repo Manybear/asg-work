@@ -36,16 +36,24 @@
 <div id="appScreen" class="screen">
   <nav>
     <span class="logo" style="display:inline-flex; align-items:center; gap:8px;"><img src="asg_logo.png" alt="ASG Logo" style="width: 28px; height: 28px; border-radius: 6px; object-fit: cover;"> ASG WORK</span>
-    <button class="nav-btn active" data-page="dashboard" onclick="showPage('dashboard')">Dashboard</button>
-    <button class="nav-btn" data-page="projects" onclick="showPage('projects')">โปรเจกต์</button>
-    <button class="nav-btn" data-page="tasks" onclick="showPage('tasks')">รายการงาน</button>
-    <button class="nav-btn" data-page="calendar" onclick="showPage('calendar')">ปฏิทินงาน</button>
-    <button class="nav-btn" data-page="customers" onclick="showPage('customers')">ลูกค้า/สัญญา</button>
-    <button class="nav-btn" data-page="quotations" onclick="showPage('quotations')">ใบเสนอราคา</button>
-    <button class="nav-btn" data-page="updates" onclick="showPage('updates')">ประวัติการทำงาน</button>
-    <button class="nav-btn" data-page="team" onclick="showPage('team')">รายชื่อทีม</button>
-    <button class="nav-btn" data-page="settings" onclick="showPage('settings')">ตั้งค่า</button>
+    
+    <!-- Mobile Menu Toggle Button -->
+    <button class="menu-toggle-btn" id="menuToggleBtn" onclick="toggleMobileMenu()" style="display:none; background:none; border:none; font-size:18px; color:var(--text-dark); cursor:pointer; padding:6px 12px; border-radius:8px;"><i class="fa-solid fa-bars"></i></button>
+
+    <div class="nav-links" id="navLinks">
+      <button class="nav-btn active" data-page="dashboard" onclick="showPage('dashboard')">Dashboard</button>
+      <button class="nav-btn" data-page="projects" onclick="showPage('projects')">โปรเจกต์</button>
+      <button class="nav-btn" data-page="tasks" onclick="showPage('tasks')">รายการงาน</button>
+      <button class="nav-btn" data-page="calendar" onclick="showPage('calendar')">ปฏิทินงาน</button>
+      <button class="nav-btn" data-page="customers" onclick="showPage('customers')">ลูกค้า/สัญญา</button>
+      <button class="nav-btn" data-page="quotations" onclick="showPage('quotations')">ใบเสนอราคา</button>
+      <button class="nav-btn" data-page="updates" onclick="showPage('updates')">ประวัติการทำงาน</button>
+      <button class="nav-btn" data-page="team" onclick="showPage('team')">รายชื่อทีม</button>
+      <button class="nav-btn" data-page="settings" onclick="showPage('settings')">ตั้งค่า</button>
+    </div>
+    
     <div class="spacer"></div>
+    
     <!-- Global Search Wrapper -->
     <div class="global-search-container" style="position: relative; margin-right: 12px; min-width: 220px; display: flex; align-items: center;">
       <input type="text" id="globalSearchInput" placeholder="🔍 ค้นหาเร็วข้ามหน้า..." style="width: 100%; padding: 6px 12px 6px 28px; border-radius: 20px; border: 1px solid var(--border-color); font-size: 13px; outline: none; background: #fff; color: var(--text-dark); transition: all 0.3s ease;">
@@ -54,7 +62,7 @@
       <!-- Dropdown Results -->
       <div id="globalSearchResults" style="display: none; position: absolute; top: calc(100% + 8px); right: 0; width: 340px; background: #fff; border: 1px solid var(--border-color); border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.15); z-index: 1000; max-height: 400px; overflow-y: auto; padding: 6px 0;"></div>
     </div>
-    <button class="bell" id="bellBtn">🔔<span id="notifCount">0</span></button>
+    <button class="bell" id="bellBtn"><i class="fa-regular fa-bell"></i><span id="notifCount">0</span></button>
     <span id="meLabel" style="font-size:13px; font-weight: 600; margin: 0 10px; color: var(--text-dark)"></span>
     <button class="nav-btn" id="logoutBtn" style="color: var(--urgent-color)"><i class="fa-solid fa-right-from-bracket"></i></button>
   </nav>
@@ -67,35 +75,35 @@
     <!-- Stats Cards Grid -->
     <div class="stats-grid">
       <div class="stat clickable" onclick="showPage('projects')">
-        <div class="stat-icon" style="color: var(--primary-red); background: var(--primary-red-light);"><i class="fa-solid fa-folder-open"></i></div>
+        <div class="stat-icon"><i class="fa-regular fa-folder"></i></div>
         <div class="stat-info">
           <span class="stat-num" id="statProjects">0</span>
           <span class="stat-lbl">โปรเจกต์ทั้งหมด</span>
         </div>
       </div>
       <div class="stat clickable" onclick="showPage('tasks')">
-        <div class="stat-icon" style="color: var(--high-color); background: #fff7ed;"><i class="fa-solid fa-list-check"></i></div>
+        <div class="stat-icon"><i class="fa-regular fa-square-check"></i></div>
         <div class="stat-info">
           <span class="stat-num" id="statPendingTasks">0</span>
           <span class="stat-lbl">งานรอดำเนินการ</span>
         </div>
       </div>
       <div class="stat clickable" onclick="showPage('customers')">
-        <div class="stat-icon" style="color: var(--medium-color); background: #fef3c7;"><i class="fa-solid fa-file-contract"></i></div>
+        <div class="stat-icon"><i class="fa-regular fa-file-lines"></i></div>
         <div class="stat-info">
           <span class="stat-num" id="statExpiringContracts">0</span>
           <span class="stat-lbl">สัญญาใกล้หมด (30 วัน)</span>
         </div>
       </div>
       <div class="stat clickable" onclick="showPage('quotations')">
-        <div class="stat-icon" style="color: var(--low-color); background: #ecfdf5;"><i class="fa-solid fa-file-invoice-dollar"></i></div>
+        <div class="stat-icon"><i class="fa-solid fa-file-invoice-dollar"></i></div>
         <div class="stat-info">
           <span class="stat-num" id="statQuotations" style="font-size: 19px; line-height: 1.2;">0 ใบ / ฿0</span>
           <span class="stat-lbl">ยอดใบเสนอราคาที่ออก</span>
         </div>
       </div>
       <div class="stat clickable" onclick="showPage('team')">
-        <div class="stat-icon" style="color: #6366f1; background: #e0e7ff;"><i class="fa-solid fa-users"></i></div>
+        <div class="stat-icon"><i class="fa-regular fa-user"></i></div>
         <div class="stat-info">
           <span class="stat-num" id="statTeamSize">0</span>
           <span class="stat-lbl">สมาชิกทีมงาน</span>
