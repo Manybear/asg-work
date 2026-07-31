@@ -15,7 +15,7 @@
   <!-- html2pdf.js for A4 Quotation PDF downloads -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
   <!-- Main Stylesheet -->
-  <link rel="stylesheet" href="style.css?v=4.1">
+  <link rel="stylesheet" href="style.css?v=4.5">
 </head>
 <body>
 
@@ -194,6 +194,9 @@
     </div>
     <h2 class="sec">รายการงานขององค์กร
       <span class="toolbar">
+        <button type="button" class="btn btn-ghost" id="btnTaskListView" onclick="switchTaskView('list')" style="padding: 4px 10px; font-size: 12px; font-weight: 700; border-radius: 6px; background: #e2e8f0;"><i class="fa-solid fa-list"></i> รายการ</button>
+        <button type="button" class="btn btn-ghost" id="btnTaskKanbanView" onclick="switchTaskView('kanban')" style="padding: 4px 10px; font-size: 12px; font-weight: 700; border-radius: 6px;"><i class="fa-solid fa-table-columns"></i> คัมบัง</button>
+        <span style="border-left: 1px solid var(--border-color); height: 18px; margin: 0 4px; display: inline-block; vertical-align: middle;"></span>
         <button type="button" onclick="openAddTaskModal()"><i class="fa-solid fa-plus"></i> เพิ่มงาน</button>
         <button type="button" onclick="exportCSVGeneric('tasks')"><i class="fa-solid fa-file-csv"></i> Export CSV</button>
       </span>
@@ -239,6 +242,36 @@
     <!-- Tasks Grid List -->
     <div id="taskList" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px;">
       <p class="muted">ยังไม่มีงานที่ตรงกับตัวกรอง</p>
+    </div>
+
+    <!-- Tasks Kanban View -->
+    <div id="taskKanban" style="display: none; overflow-x: auto; padding-bottom: 12px; margin-top: 15px;">
+      <div class="kanban-board" style="display: flex; gap: 16px; min-width: 900px; align-items: flex-start;">
+        <!-- To Do Column -->
+        <div class="kanban-column" style="flex: 1; background: #f8fafc; border-radius: 12px; padding: 16px; border: 1px solid var(--border-color); box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
+          <div class="kanban-column-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 2px solid #e2e8f0; padding-bottom: 6px;">
+            <h3 style="font-size: 14px; font-weight: 700; color: var(--text-dark); display: flex; align-items: center; gap: 6px; margin: 0;"><i class="fa-solid fa-circle-question" style="color: #64748b;"></i> ยังไม่เริ่ม</h3>
+            <span class="badge" id="kanbanCountNotyet" style="background: #64748b; color: #fff; border-radius: 20px; padding: 2px 8px; font-size: 11px;">0</span>
+          </div>
+          <div id="kanbanListNotyet" style="display: flex; flex-direction: column; gap: 10px; min-height: 400px;"></div>
+        </div>
+        <!-- In Progress Column -->
+        <div class="kanban-column" style="flex: 1; background: #f8fafc; border-radius: 12px; padding: 16px; border: 1px solid var(--border-color); box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
+          <div class="kanban-column-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 2px solid #fed7aa; padding-bottom: 6px;">
+            <h3 style="font-size: 14px; font-weight: 700; color: var(--text-dark); display: flex; align-items: center; gap: 6px; margin: 0;"><i class="fa-solid fa-spinner fa-spin-pulse" style="color: #c2410c;"></i> กำลังทำ</h3>
+            <span class="badge" id="kanbanCountInprog" style="background: #c2410c; color: #fff; border-radius: 20px; padding: 2px 8px; font-size: 11px;">0</span>
+          </div>
+          <div id="kanbanListInprog" style="display: flex; flex-direction: column; gap: 10px; min-height: 400px;"></div>
+        </div>
+        <!-- Done Column -->
+        <div class="kanban-column" style="flex: 1; background: #f8fafc; border-radius: 12px; padding: 16px; border: 1px solid var(--border-color); box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
+          <div class="kanban-column-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 2px solid #bbf7d0; padding-bottom: 6px;">
+            <h3 style="font-size: 14px; font-weight: 700; color: var(--text-dark); display: flex; align-items: center; gap: 6px; margin: 0;"><i class="fa-solid fa-circle-check" style="color: #15803d;"></i> เสร็จแล้ว</h3>
+            <span class="badge" id="kanbanCountDone" style="background: #15803d; color: #fff; border-radius: 20px; padding: 2px 8px; font-size: 11px;">0</span>
+          </div>
+          <div id="kanbanListDone" style="display: flex; flex-direction: column; gap: 10px; min-height: 400px;"></div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -355,6 +388,20 @@
         <button type="button" class="btn btn-ghost cancel-edit-btn" id="custCancelBtn" onclick="cancelEditCustomer()">ยกเลิก</button>
       </div>
     </form>
+
+    <!-- Search & Filter Bar for Customers -->
+    <div class="filter-bar" style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; background: #f8fafc; padding: 12px; border-radius: 8px; border: 1px solid var(--border-color);">
+      <div style="display: flex; gap: 8px; width: 100%;">
+        <input type="text" id="customerSearch" placeholder="🔍 ค้นหาชื่อลูกค้า หรือ เลขผู้เสียภาษี..." style="flex: 1; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border-color); font-family: var(--font-family); font-size: 13.5px;" oninput="filterAndRenderCustomers()">
+      </div>
+      <div class="view-switcher" style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px;">
+        <button type="button" class="btn btn-ghost active" id="btnFilterCustAll" onclick="filterCustomerContract('all')" style="padding: 6px 12px; font-size: 12px; font-weight: 700; border-radius: 6px; background: #e2e8f0;"><i class="fa-solid fa-folder-open"></i> ทั้งหมด</button>
+        <button type="button" class="btn btn-ghost" id="btnFilterCustActive" onclick="filterCustomerContract('active')" style="padding: 6px 12px; font-size: 12px; font-weight: 700; border-radius: 6px; color: #166534;"><i class="fa-solid fa-circle-check"></i> 🟢 สัญญาปกติ</button>
+        <button type="button" class="btn btn-ghost" id="btnFilterCustExpiring" onclick="filterCustomerContract('expiring')" style="padding: 6px 12px; font-size: 12px; font-weight: 700; border-radius: 6px; color: #854d0e;"><i class="fa-solid fa-circle-exclamation"></i> 🟡 ใกล้หมดอายุ (≤ 30 วัน)</button>
+        <button type="button" class="btn btn-ghost" id="btnFilterCustExpired" onclick="filterCustomerContract('expired')" style="padding: 6px 12px; font-size: 12px; font-weight: 700; border-radius: 6px; color: #991b1b;"><i class="fa-solid fa-circle-xmark"></i> 🔴 หมดอายุแล้ว</button>
+      </div>
+    </div>
+
     <div id="customerList" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px;"></div>
   </div>
 
@@ -850,6 +897,15 @@
         <label>ชื่อลูกค้า / บริษัท</label>
         <input type="text" id="renewCustName" disabled style="background:#f1f5f9; color:var(--text-muted);">
       </div>
+      
+      <!-- Current Contract Reference Box -->
+      <div id="renewCurrentInfoBox" style="background: #f8fafc; border: 1px solid var(--border-color); padding: 10px 12px; border-radius: 8px; margin-bottom: 15px; font-size: 12.5px; display: none; flex-direction: column; gap: 4px;">
+        <div style="font-weight: 700; color: var(--text-dark); margin-bottom: 4px;"><i class="fa-solid fa-file-contract"></i> สัญญารอบปัจจุบัน:</div>
+        <div>📅 <strong>วันหมดอายุเดิม:</strong> <span id="renewCurrentEndDate"></span></div>
+        <div>📄 <strong>ใบเสนอราคาเดิม:</strong> <span id="renewCurrentQuot"></span></div>
+        <div>📝 <strong>หมายเหตุเดิม:</strong> <span id="renewCurrentNote"></span></div>
+      </div>
+
       <div class="form-row">
         <label>วันสิ้นสุดสัญญาใหม่ *</label>
         <input type="date" id="renewEndDate" required>
@@ -873,6 +929,6 @@
 </div>
 
 <!-- Firebase scripts -->
-<script type="module" src="app.js?v=4.1"></script>
+<script type="module" src="app.js?v=4.5"></script>
 </body>
 </html>
