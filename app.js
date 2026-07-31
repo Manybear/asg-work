@@ -235,22 +235,36 @@ async function updateUserPresence() {
 
 function isUserOnline(user) {
   if (!user || !user.lastActive) return false;
-  const lastActiveTime = user.lastActive.toDate ? user.lastActive.toDate().getTime() : new Date(user.lastActive).getTime();
-  const diff = Date.now() - lastActiveTime;
-  return diff <= 300000; // Online if active in last 5 minutes
+  try {
+    const lastActiveTime = typeof user.lastActive.toDate === 'function' 
+      ? user.lastActive.toDate().getTime() 
+      : new Date(user.lastActive).getTime();
+    if (isNaN(lastActiveTime)) return false;
+    const diff = Date.now() - lastActiveTime;
+    return diff <= 300000; // Online if active in last 5 minutes
+  } catch (e) {
+    return false;
+  }
 }
 
 function formatLastActive(lastActive) {
   if (!lastActive) return 'ไม่เคยเข้าใช้งาน';
-  const time = lastActive.toDate ? lastActive.toDate().getTime() : new Date(lastActive).getTime();
-  const diff = Date.now() - time;
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'เมื่อสักครู่';
-  if (mins < 60) return `${mins} นาทีที่แล้ว`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours} ชั่วโมงที่แล้ว`;
-  const days = Math.floor(hours / 24);
-  return `${days} วันที่แล้ว`;
+  try {
+    const time = typeof lastActive.toDate === 'function' 
+      ? lastActive.toDate().getTime() 
+      : new Date(lastActive).getTime();
+    if (isNaN(time)) return 'ไม่ระบุ';
+    const diff = Date.now() - time;
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return 'เมื่อสักครู่';
+    if (mins < 60) return `${mins} นาทีที่แล้ว`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return `${hours} ชั่วโมงที่แล้ว`;
+    const days = Math.floor(hours / 24);
+    return `${days} วันที่แล้ว`;
+  } catch (e) {
+    return 'ไม่ระบุ';
+  }
 }
 
 async function loadProfile(uid, email) {
@@ -1877,30 +1891,33 @@ window.openRenewalModal = function(id) {
   if (!c) return;
   
   renewalCustomerId = id;
-  document.getElementById('renewCustName').value = c.name || '';
-  document.getElementById('renewEndDate').value = '';
-  document.getElementById('renewNote').value = '';
+  const nameEl = document.getElementById('renewCustName');
+  if (nameEl) nameEl.value = c.name || '';
+  const dateEl = document.getElementById('renewEndDate');
+  if (dateEl) dateEl.value = '';
+  const noteEl = document.getElementById('renewNote');
+  if (noteEl) noteEl.value = '';
   
   const select = document.getElementById('renewQuotationSelect');
   if (select) {
-    const custName = (c.name || '').toLowerCase();
-    const relatedQuots = quotationsCache.filter(q => (q.qtCustomer || '').toLowerCase() === custName);
+    const custName = (c.name || '').toLowerCase().trim();
+    const relatedQuots = quotationsCache.filter(q => (q.customerName || '').toLowerCase().trim() === custName);
     
     let optionsHtml = '<option value="">-- ไม่ผูกใบเสนอราคา --</option>';
     
     if (relatedQuots.length > 0) {
       optionsHtml += `<optgroup label="ใบเสนอราคาของเจ้านี้">`;
       relatedQuots.forEach(q => {
-        optionsHtml += `<option value="${q.id}|${q.qtCode}">${q.qtCode} - วันที่ ${q.qtDate || '-'} (ยอด ${parseFloat(q.grandTotal || 0).toLocaleString()} บ.)</option>`;
+        optionsHtml += `<option value="${q.id}|${q.code}">${q.code} - วันที่ ${q.date || '-'} (ยอด ${parseFloat(q.total || 0).toLocaleString()} บ.)</option>`;
       });
       optionsHtml += `</optgroup>`;
     }
     
-    const otherQuots = quotationsCache.filter(q => (q.qtCustomer || '').toLowerCase() !== custName);
+    const otherQuots = quotationsCache.filter(q => (q.customerName || '').toLowerCase().trim() !== custName);
     if (otherQuots.length > 0) {
       optionsHtml += `<optgroup label="ใบเสนอราคาอื่น ๆ">`;
       otherQuots.forEach(q => {
-        optionsHtml += `<option value="${q.id}|${q.qtCode}">${q.qtCode} (${q.qtCustomer || 'ไม่ระบุ'}) - วันที่ ${q.qtDate || '-'} (ยอด ${parseFloat(q.grandTotal || 0).toLocaleString()} บ.)</option>`;
+        optionsHtml += `<option value="${q.id}|${q.code}">${q.code} (${q.customerName || 'ไม่ระบุ'}) - วันที่ ${q.date || '-'} (ยอด ${parseFloat(q.total || 0).toLocaleString()} บ.)</option>`;
       });
       optionsHtml += `</optgroup>`;
     }
@@ -1908,7 +1925,8 @@ window.openRenewalModal = function(id) {
     select.innerHTML = optionsHtml;
   }
   
-  document.getElementById('renewalModal').style.display = 'flex';
+  const m = document.getElementById('renewalModal');
+  if (m) m.style.display = 'flex';
 };
 
 window.closeRenewalModal = function() {
