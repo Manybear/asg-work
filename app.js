@@ -50,6 +50,7 @@ let currentCalendarDate = new Date();
 
 document.addEventListener('DOMContentLoaded', () => {
   loadAppTheme();
+  initGlobalSearch();
   
   // Set default date for daily report filter to today in local timezone (YYYY-MM-DD)
   const filterInput = document.getElementById('dailyReportDateFilter');
@@ -88,6 +89,47 @@ function adjustColorBrightness(hex, percent) {
   B = Math.max(0, Math.min(255, B));
   return "#" + (0x1000000 + R * 0x10000 + G * 0x100 + B).toString(16).slice(1);
 }
+
+window.showToast = function(message, type = 'success') {
+  let toast = document.getElementById('app-toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'app-toast';
+    toast.style.position = 'fixed';
+    toast.style.bottom = '20px';
+    toast.style.right = '20px';
+    toast.style.padding = '12px 24px';
+    toast.style.borderRadius = '8px';
+    toast.style.color = '#fff';
+    toast.style.fontSize = '14px';
+    toast.style.fontWeight = '600';
+    toast.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+    toast.style.zIndex = '9999';
+    toast.style.transition = 'all 0.3s ease';
+    toast.style.transform = 'translateY(10px)';
+    toast.style.opacity = '0';
+    document.body.appendChild(toast);
+  }
+  
+  if (type === 'success') {
+    toast.style.background = '#10b981';
+  } else if (type === 'error') {
+    toast.style.background = '#ef4444';
+  } else {
+    toast.style.background = '#3b82f6';
+  }
+  
+  toast.textContent = message;
+  // Trigger reflow
+  toast.offsetHeight;
+  toast.style.opacity = '1';
+  toast.style.transform = 'translateY(0)';
+  
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transform = 'translateY(10px)';
+  }, 3000);
+};
 
 async function logActivity(text) {
   try {
@@ -189,14 +231,26 @@ async function loadProfile(uid, email) {
 async function loadSettings() {
   const ref = doc(db, 'settings', 'global');
   const snap = await getDoc(ref);
-  if (snap.exists()) settings = snap.data();
-  else await setDoc(ref, settings);
+  if (snap.exists()) {
+    settings = snap.data();
+    const companyNameInput = document.getElementById('setCompanyName');
+    if (companyNameInput) companyNameInput.value = settings.companyName || 'บริษัท แอดวานซ์ บิสซิเนส แมกกาซีน จำกัด';
+    const companyAddressInput = document.getElementById('setCompanyAddress');
+    if (companyAddressInput) companyAddressInput.value = settings.companyAddress || '427/55 ถนนลาดพร้าว แขวงจอมพล เขตจตุจักร กรุงเทพฯ 10900';
+    const companyTaxIdInput = document.getElementById('setCompanyTaxId');
+    if (companyTaxIdInput) companyTaxIdInput.value = settings.companyTaxId || '';
+  } else {
+    await setDoc(ref, settings);
+  }
   
   const visibilitySelect = document.getElementById('visibilitySelect');
   if (visibilitySelect) visibilitySelect.value = settings.visibilityMode;
   
   const adminPanel = document.getElementById('adminPanel');
   if (adminPanel) adminPanel.style.display = profile.role === 'admin' ? 'block' : 'none';
+  
+  const companyPanel = document.getElementById('companySettingsPanel');
+  if (companyPanel) companyPanel.style.display = profile.role === 'admin' ? 'block' : 'none';
   
   // Load dynamic Categories
   const catSnap = await getDoc(doc(db, 'settings', 'categories'));
@@ -249,6 +303,28 @@ document.getElementById('visibilitySelect').addEventListener('change', async (e)
   settings.visibilityMode = e.target.value;
   await setDoc(doc(db, 'settings', 'global'), settings);
 });
+
+const companyForm = document.getElementById('companySettingsForm');
+if (companyForm) {
+  companyForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (profile.role !== 'admin') {
+      alert('เฉพาะหัวหน้างานเท่านั้นที่สามารถแก้ไขข้อมูลบริษัทได้');
+      return;
+    }
+    
+    settings.companyName = document.getElementById('setCompanyName').value.trim();
+    settings.companyAddress = document.getElementById('setCompanyAddress').value.trim();
+    settings.companyTaxId = document.getElementById('setCompanyTaxId').value.trim();
+    
+    try {
+      await setDoc(doc(db, 'settings', 'global'), settings);
+      showToast('บันทึกข้อมูลบริษัทสำเร็จ', 'success');
+    } catch (err) {
+      alert('เกิดข้อผิดพลาดในการบันทึกข้อมูล: ' + err.message);
+    }
+  });
+}
 
 // ---------- NAVIGATION CONTROL ----------
 
@@ -306,6 +382,40 @@ function renderSettingsTags() {
     `).join('') || '<p class="muted" style="font-size:12px">ไม่มีผู้สั่งงาน</p>';
   }
 }
+
+window.addNewCategoryPrompt = async () => {
+  const val = prompt('กรอกชื่อหมวดหมู่ใหม่:');
+  if (!val) return;
+  const trimmed = val.trim();
+  if (!trimmed) return;
+  if (categoriesCache.includes(trimmed)) {
+    alert('หมวดหมู่นี้มีอยู่แล้ว');
+    return;
+  }
+  categoriesCache.push(trimmed);
+  await setDoc(doc(db, 'settings', 'categories'), { list: categoriesCache });
+  populateTagsDropdowns();
+  renderSettingsTags();
+  document.getElementById('taskCategorySelect').value = trimmed;
+  showToast('เพิ่มหมวดหมู่สำเร็จ', 'success');
+};
+
+window.addNewAssignerPrompt = async () => {
+  const val = prompt('กรอกชื่อผู้สั่งงานใหม่:');
+  if (!val) return;
+  const trimmed = val.trim();
+  if (!trimmed) return;
+  if (assignersCache.includes(trimmed)) {
+    alert('ผู้สั่งงานนี้มีอยู่แล้ว');
+    return;
+  }
+  assignersCache.push(trimmed);
+  await setDoc(doc(db, 'settings', 'assigners'), { list: assignersCache });
+  populateTagsDropdowns();
+  renderSettingsTags();
+  document.getElementById('taskAssignerSelect').value = trimmed;
+  showToast('เพิ่มผู้สั่งงานสำเร็จ', 'success');
+};
 
 window.addNewCategoryClick = async () => {
   const input = document.getElementById('newCategoryInput');
@@ -370,12 +480,13 @@ document.getElementById('projectForm').addEventListener('submit', async (e) => {
       await updateDoc(doc(db, 'projects', editingProjectId), data);
       await logActivity(`📂 แก้ไขรายละเอียดโครงการ "${data.name}"`);
       cancelEditProject();
+      showToast('แก้ไขโครงการสำเร็จ', 'success');
     } else {
       await addDoc(collection(db, 'projects'), { ...data, createdBy: profile.uid, createdAt: serverTimestamp() });
       await logActivity(`📂 สร้างโครงการใหม่ "${data.name}"`);
       e.target.reset();
+      showToast('สร้างโครงการสำเร็จ', 'success');
     }
-    showPage('updates');
   } catch (err) {
     alert('เกิดข้อผิดพลาดในการบันทึกโครงการ: ' + err.message);
   }
@@ -705,7 +816,7 @@ document.getElementById('taskFormSubmit').addEventListener('submit', async (e) =
       await logActivity(`สร้างงานใหม่ "${data.title}"`);
     }
     closeAddTaskModal();
-    showPage('updates');
+    showToast(editingTaskId ? 'แก้ไขงานสำเร็จ' : 'สร้างงานสำเร็จ', 'success');
   } catch (err) {
     alert('เกิดข้อผิดพลาดในการเซฟงาน: ' + err.message);
   }
@@ -954,8 +1065,8 @@ window.addTaskProgressUpdateClick = async () => {
   await logActivity(`อัปเดตงาน "${t.title}": ${text}`);
   
   input.value = '';
-  document.getElementById('taskDetailsModal').classList.remove('open');
-  showPage('updates');
+  showTaskDetails(activeDetailsTaskId); // Refresh the modal with the new update
+  showToast('บันทึกอัปเดตงานสำเร็จ', 'success');
 };
 
 // ---------- LINE SHARE & CLIPBOARD FUNCTIONS ----------
@@ -995,6 +1106,15 @@ function formatTaskShareMessage(t) {
 window.sendTaskToLineShare = function() {
   if (!activeDetailsTaskId) return;
   const t = tasksCache.find(x => x.id === activeDetailsTaskId);
+  if (!t) return;
+  
+  const msg = formatTaskShareMessage(t);
+  const lineUrl = `https://line.me/R/msg/text/?${encodeURIComponent(msg)}`;
+  window.open(lineUrl, '_blank');
+};
+
+window.shareTaskToLineCard = function(taskId) {
+  const t = tasksCache.find(x => x.id === taskId);
   if (!t) return;
   
   const msg = formatTaskShareMessage(t);
@@ -1101,8 +1221,8 @@ window.onModalStatusChange = async (val) => {
   const statusLabels = { notyet: 'ยังไม่เริ่ม', inprog: 'กำลังทำ', done: 'เสร็จแล้ว' };
   await logActivity(`เปลี่ยนสถานะงาน "${t.title}" เป็น ${statusLabels[val] || val}`);
   
-  document.getElementById('taskDetailsModal').classList.remove('open');
-  showPage('updates');
+  showTaskDetails(activeDetailsTaskId); // Refresh the modal with the new status
+  showToast(`เปลี่ยนสถานะเป็น "${statusLabels[val] || val}" สำเร็จ`, 'success');
 };
 
 // ---------- CALENDAR LOGIC ----------
@@ -1189,12 +1309,13 @@ document.getElementById('customerForm').addEventListener('submit', async (e) => 
       await updateDoc(doc(db, 'customers', editingCustomerId), data);
       await logActivity(`👤 แก้ไขประวัติข้อมูลลูกค้า "${data.name}"`);
       cancelEditCustomer();
+      showToast('แก้ไขข้อมูลลูกค้าสำเร็จ', 'success');
     } else {
       await addDoc(collection(db, 'customers'), { ...data, createdAt: serverTimestamp() });
       await logActivity(`👤 เพิ่มรายชื่อลูกค้าใหม่ "${data.name}"`);
       e.target.reset();
+      showToast('เพิ่มรายชื่อลูกค้าสำเร็จ', 'success');
     }
-    showPage('updates');
   } catch (err) {
     alert('เกิดข้อผิดพลาดในการบันทึกข้อมูลลูกค้า: ' + err.message);
   }
@@ -1245,15 +1366,27 @@ function renderCustomers(customers) {
   }
   
   box.innerHTML = customers.map(c => {
-    const days = daysUntil(c.contractEndDate);
-    const daysLabel = days < 0 ? `หมดอายุแล้ว ${Math.abs(days)} วัน` : (days === 0 ? 'หมดอายุวันนี้!' : `เหลือเวลาอีก ${days} วัน`);
-    const dateClass = days <= 30 ? 'badge urgent' : 'badge done';
+    let badgeHtml = '';
+    if (!c.contractEndDate) {
+      badgeHtml = `<span class="badge" style="background:#cbd5e1; color:#475569; padding:2px 8px; font-size:11px; border-radius:12px;">ไม่มีข้อมูลสัญญา</span>`;
+    } else {
+      const days = daysUntil(c.contractEndDate);
+      if (days < 0) {
+        badgeHtml = `<span class="badge" style="background:#fef2f2; color:#ef4444; border:1px solid #fca5a5; padding:2px 8px; font-size:11px; border-radius:12px; font-weight:700;">🔴 หมดสัญญาแล้ว (${Math.abs(days)} วัน)</span>`;
+      } else if (days === 0) {
+        badgeHtml = `<span class="badge" style="background:#fff7ed; color:#ea580c; border:1px solid #fdba74; padding:2px 8px; font-size:11px; border-radius:12px; font-weight:700;">🟡 หมดสัญญาวันนี้!</span>`;
+      } else if (days <= 30) {
+        badgeHtml = `<span class="badge" style="background:#fff7ed; color:#d97706; border:1px solid #fdba74; padding:2px 8px; font-size:11px; border-radius:12px; font-weight:700;">🟡 เหลืออีก ${days} วัน</span>`;
+      } else {
+        badgeHtml = `<span class="badge" style="background:#f0fdf4; color:#16a34a; border:1px solid #86efac; padding:2px 8px; font-size:11px; border-radius:12px; font-weight:700;">🟢 ปกติ (เหลืออีก ${days} วัน)</span>`;
+      }
+    }
     
     return `
       <div class="card" id="customer-card-${c.id}" style="display:flex; flex-direction:column; gap:4px; transition: all 0.2s;">
         <div style="display:flex; justify-content:space-between; align-items:flex-start">
           <strong style="font-size:15px; color:var(--text-dark);"><i class="fa-regular fa-building"></i> ${c.name}</strong>
-          <span class="${dateClass}">${daysLabel}</span>
+          ${badgeHtml}
         </div>
         <div class="ts"><i class="fa-regular fa-calendar-check"></i> ครบกำหนดสัญญา: ${c.contractEndDate || '-'}</div>
         <div style="font-size:12.5px; color:var(--text-muted);">
@@ -1289,6 +1422,14 @@ window.openCreateQuotationForm = function() {
   }
   const custInput = document.getElementById('qtCustomer');
   if (custInput) custInput.value = '';
+  
+  const compNameInput = document.getElementById('qtCompanyName');
+  if (compNameInput) compNameInput.value = settings.companyName || 'บริษัท แอดวานซ์ บิสซิเนส แมกกาซีน จำกัด';
+  const compAddrInput = document.getElementById('qtCompanyAddress');
+  if (compAddrInput) compAddrInput.value = settings.companyAddress || '427/55 ถนนลาดพร้าว แขวงจอมพล เขตจตุจักร กรุงเทพฯ 10900';
+  
+  const whtBox = document.getElementById('qtWhtCheckbox');
+  if (whtBox) whtBox.checked = false;
     
   addQuotationItemRow("", 1, 0);
   document.getElementById('quotationFormPanel').style.display = 'block';
@@ -1339,13 +1480,19 @@ window.calculateQuotationTotals = function() {
   
   const isVat = document.getElementById('qtVatCheckbox').checked;
   const vat = isVat ? subtotal * 0.07 : 0;
-  const total = subtotal + vat;
+  
+  const isWht = document.getElementById('qtWhtCheckbox').checked;
+  const wht = isWht ? subtotal * 0.03 : 0;
+  
+  const total = subtotal + vat - wht;
   
   document.getElementById('qtSubtotalDisplay').textContent = '฿' + formatMoney(subtotal);
   document.getElementById('qtVatDisplay').textContent = '฿' + formatMoney(vat);
+  document.getElementById('qtWhtDisplay').textContent = '-฿' + formatMoney(wht);
   document.getElementById('qtTotalDisplay').textContent = '฿' + formatMoney(total);
   
   document.getElementById('qtVatRow').style.display = isVat ? 'block' : 'none';
+  document.getElementById('qtWhtRow').style.display = isWht ? 'block' : 'none';
 };
 
 document.getElementById('quotationForm').addEventListener('submit', async (e) => {
@@ -1355,6 +1502,26 @@ document.getElementById('quotationForm').addEventListener('submit', async (e) =>
   const date = document.getElementById('qtDate').value;
   
   const customerInput = document.getElementById('qtCustomer').value.trim();
+  if (!customerInput) {
+    alert('กรุณากรอกชื่อลูกค้า');
+    return;
+  }
+  
+  // Prevent duplicate quotation code
+  if (!editingQuotationId) {
+    const isDuplicate = quotationsCache.some(q => q.code && q.code.toLowerCase() === code.toLowerCase());
+    if (isDuplicate) {
+      alert(`เลขที่ใบเสนอราคา "${code}" นี้มีอยู่ในระบบแล้ว กรุณาใช้เลขอื่น`);
+      return;
+    }
+  } else {
+    const isDuplicate = quotationsCache.some(q => q.id !== editingQuotationId && q.code && q.code.toLowerCase() === code.toLowerCase());
+    if (isDuplicate) {
+      alert(`เลขที่ใบเสนอราคา "${code}" นี้มีอยู่ในระบบแล้ว กรุณาใช้เลขอื่น`);
+      return;
+    }
+  }
+  
   const matchedCust = customersCache.find(c => c.name === customerInput);
   const customerId = matchedCust ? matchedCust.id : '';
   const customerName = customerInput;
@@ -1383,7 +1550,11 @@ document.getElementById('quotationForm').addEventListener('submit', async (e) =>
   
   const isVat = document.getElementById('qtVatCheckbox').checked;
   const vat = isVat ? subtotal * 0.07 : 0;
-  const total = subtotal + vat;
+  
+  const isWht = document.getElementById('qtWhtCheckbox').checked;
+  const wht = isWht ? subtotal * 0.03 : 0;
+  
+  const total = subtotal + vat - wht;
   
   const id = editingQuotationId || ('qt_' + Date.now());
   const data = {
@@ -1397,6 +1568,7 @@ document.getElementById('quotationForm').addEventListener('submit', async (e) =>
     items,
     subtotal,
     vat,
+    wht,
     total,
     notes,
     createdBy: editingQuotationId 
@@ -1414,9 +1586,8 @@ document.getElementById('quotationForm').addEventListener('submit', async (e) =>
     } else {
       await logActivity(`💰 ออกใบเสนอราคาใหม่ หมายเลข "${code}" สำหรับลูกค้า "${customerName}"`);
     }
-    alert(editingQuotationId ? 'แก้ไขใบเสนอราคาสำเร็จ' : 'บันทึกใบเสนอราคาสำเร็จ');
     closeQuotationFormPanel();
-    showPage('updates');
+    showToast(editingQuotationId ? 'แก้ไขใบเสนอราคาสำเร็จ' : 'ออกใบเสนอราคาสำเร็จ', 'success');
   } catch (err) {
     alert('เกิดข้อผิดพลาดในการบันทึกเอกสาร: ' + err.message);
   }
@@ -1444,6 +1615,7 @@ window.editQuotation = function(qId) {
   document.getElementById('qtCompanyAddress').value = q.companyAddress || '';
   document.getElementById('qtNotes').value = q.notes || '';
   document.getElementById('qtVatCheckbox').checked = q.vat > 0;
+  document.getElementById('qtWhtCheckbox').checked = q.wht > 0;
   
   const tbody = document.getElementById('quotationItemsBody');
   tbody.innerHTML = '';
@@ -1536,6 +1708,14 @@ window.printQuotationDocument = function(qId) {
     </tr>
   ` : '';
   
+  const whtSection = q.wht > 0 ? `
+    <tr>
+      <td colspan="3" style="border:none;"></td>
+      <td style="text-align:right; font-weight:700; background:#f9fafb; border:1px solid #cbd5e1; padding:8px;">หักภาษี ณ ที่จ่าย (3%):</td>
+      <td style="text-align:right; font-weight:700; background:#f9fafb; border:1px solid #cbd5e1; padding:8px;">-฿${formatMoney(q.wht)}</td>
+    </tr>
+  ` : '';
+  
   const custPhoneLine = cust && cust.phone ? `<br><strong>เบอร์โทร/ผู้ติดต่อ:</strong> ${escapeHtml(cust.phone)}` : '';
   const custTaxLine = cust && cust.taxId ? `<br><strong>เลขประจำตัวผู้เสียภาษี (Tax ID):</strong> ${escapeHtml(cust.taxId)}` : '';
   const custAddressLine = cust && cust.address ? `<br><strong>ที่อยู่:</strong> ${escapeHtml(cust.address).replace(/\n/g, '<br>')}` : '';
@@ -1587,6 +1767,7 @@ window.printQuotationDocument = function(qId) {
           <td style="text-align:right; font-weight:700; background:#f9fafb; font-size:12px; border:1px solid #cbd5e1; padding:8px;">฿${formatMoney(q.subtotal)}</td>
         </tr>
         ${vatSection}
+        ${whtSection}
         <tr style="background:#f1f5f9;">
           <td colspan="3" style="border:none;"></td>
           <td style="text-align:right; font-weight:800; font-size:13px; border:1px solid #cbd5e1; padding:8px; color:var(--primary-red);">ยอดเงินรวมสุทธิ:</td>
@@ -1863,7 +2044,16 @@ window.applyQuickFilter = function(filterType) {
     return isAssigned;
   }) : [...tasksCache];
   
-  if (filterType === 'my') {
+  if (filterType === 'notyet') {
+    list = list.filter(t => t.status === 'notyet');
+    if (filterStatus) filterStatus.value = 'notyet';
+  } else if (filterType === 'inprog') {
+    list = list.filter(t => t.status === 'inprog');
+    if (filterStatus) filterStatus.value = 'inprog';
+  } else if (filterType === 'done') {
+    list = list.filter(t => t.status === 'done');
+    if (filterStatus) filterStatus.value = 'done';
+  } else if (filterType === 'my') {
     if (currentUser) {
       list = list.filter(t => t.assignees ? t.assignees.includes(currentUser.uid) : (t.assignee === currentUser.uid));
       if (filterAssignee) filterAssignee.value = currentUser.uid;
@@ -1926,6 +2116,19 @@ function renderTasksList(tasks) {
       `;
     }
     
+    let linksSection = '';
+    if (t.links && t.links.length) {
+      linksSection = `
+        <div class="task-card-links" style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;" onclick="event.stopPropagation()">
+          ${t.links.map(l => `
+            <a href="${l.url}" target="_blank" style="display:inline-flex; align-items:center; gap:4px; font-size:11px; color:#ffffff; background:#6366f1; border:1px solid #4f46e5; padding:3px 8px; border-radius:15px; text-decoration:none; transition:all 0.2s;" onmouseover="this.style.background='#4f46e5'" onmouseout="this.style.background='#6366f1'">
+              <i class="fa-solid fa-link" style="font-size:9px"></i> ${escapeHtml(l.label)}
+            </a>
+          `).join('')}
+        </div>
+      `;
+    }
+    
     return `
       <div class="card task-card ${prioClass}" onclick="openTaskDetailsModal('${t.id}')">
         <div class="task-card-header">
@@ -1939,7 +2142,9 @@ function renderTasksList(tasks) {
           <div class="meta-item"><span class="badge ${prioClass}" style="font-size:9px; padding:1px 5px">${prioLabel}</span></div>
         </div>
         ${progressSection}
+        ${linksSection}
         <div class="card-actions" onclick="event.stopPropagation()">
+          <button class="icon-btn" onclick="shareTaskToLineCard('${t.id}')" style="background:#06c755; color:#fff;" title="แชร์ลง LINE"><i class="fa-brands fa-line"></i> LINE</button>
           ${canEdit ? `<button class="icon-btn edit" onclick="openAddTaskModal('${t.id}')"><i class="fa-solid fa-pen-to-square"></i> แก้ไข</button>` : ''}
           ${profile.role === 'admin' ? `<button class="icon-btn del" onclick="deleteTask('${t.id}')"><i class="fa-solid fa-trash"></i> ลบ</button>` : ''}
         </div>
@@ -2202,8 +2407,8 @@ function renderTeamMembers(users, tasks) {
     
     return `
       <div class="card" style="display:flex; justify-content:space-between; align-items:center; padding:12px 16px; margin-bottom:8px">
-        <div>
-          <strong style="font-size:14px; color:var(--text-dark);">${nameLabel}</strong>
+        <div onclick="viewEmployeeTasksAndHistory('${u.uid}', '${escapeHtml(u.name)}')" style="cursor:pointer; flex:1;" title="คลิกเพื่อดูงานของ ${u.name}">
+          <strong style="font-size:14px; color:var(--text-dark); text-decoration:underline; text-decoration-style:dotted;">${nameLabel}</strong>
           <div class="ts">${u.email}</div>
           <div style="margin-top:6px">
             <span class="${roleClass}" style="padding:1px 6px; font-size:10px">${roleLabel}</span>
@@ -2222,6 +2427,16 @@ function renderTeamMembers(users, tasks) {
     `;
   }).join('');
 }
+
+window.viewEmployeeTasksAndHistory = function(uid, name) {
+  showPage('tasks');
+  const filterAssignee = document.getElementById('filterAssignee');
+  if (filterAssignee) {
+    filterAssignee.value = uid;
+    filterAndRenderTasks();
+  }
+  showToast(`แสดงรายการงานของ ${name}`, 'success');
+};
 
 window.deleteUserRecord = async (uid) => {
   if (!confirm('ลบพนักงานรายนี้? ข้อมูลโปรไฟล์จะหายไปจากรายชื่อทีม แต่อีเมลจะยังคงล็อกอินได้')) return;
@@ -2355,9 +2570,8 @@ document.getElementById('addUserForm')?.addEventListener('submit', async (e) => 
     await setPersistence(secondaryAuth, inMemoryPersistence);
     const cred = await createUserWithEmailAndPassword(secondaryAuth, email, pw);
     
-    // Write profile under secondary Firestore client session (satisfies users rules check)
-    const secondaryDb = getFirestore(secondaryApp);
-    await setDoc(doc(secondaryDb, 'users', cred.user.uid), {
+    // Write profile using the primary Firestore client (since primary session is an Admin, this satisfies the rules check)
+    await setDoc(doc(db, 'users', cred.user.uid), {
       name: name,
       email: email,
       role: role,
@@ -2503,6 +2717,27 @@ window.sendDailyReportToLine = () => {
 };
 
 window.printPage = (pageId) => {
+  const titles = {
+    'page-tasks': 'รายงานรายการงานขององค์กร (Tasks Report)',
+    'page-updates': 'รายงานประวัติการทำงานประจำวัน (History Feed)',
+    'page-customers': 'รายงานข้อมูลลูกค้าและสัญญา (Customers & Contracts)'
+  };
+  
+  const page = document.getElementById(pageId);
+  if (page) {
+    const titleEl = page.querySelector('.print-header .print-title');
+    if (titleEl) titleEl.textContent = titles[pageId] || 'รายงานข้อมูลระบบ';
+    
+    const byEl = page.querySelector('.print-header .print-by');
+    if (byEl) byEl.textContent = profile ? profile.name : 'System';
+    
+    const timeEl = page.querySelector('.print-header .print-time');
+    if (timeEl) {
+      const now = new Date();
+      timeEl.textContent = now.toLocaleDateString('th-TH') + ' ' + now.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+    }
+  }
+
   document.querySelectorAll('.page').forEach(p => p.classList.remove('printing'));
   document.getElementById(pageId).classList.add('printing');
   window.print();
@@ -2537,3 +2772,155 @@ function escapeHtml(text) {
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
 }
+
+// ---------- GLOBAL SEARCH ENGINE ----------
+
+function initGlobalSearch() {
+  const input = document.getElementById('globalSearchInput');
+  const resultsBox = document.getElementById('globalSearchResults');
+  const clearBtn = document.getElementById('globalSearchClear');
+  if (!input || !resultsBox) return;
+  
+  input.addEventListener('input', () => {
+    const val = input.value.trim().toLowerCase();
+    if (!val) {
+      resultsBox.style.display = 'none';
+      if (clearBtn) clearBtn.style.display = 'none';
+      return;
+    }
+    if (clearBtn) clearBtn.style.display = 'block';
+    
+    // 1. Search Tasks
+    const matchedTasks = tasksCache.filter(t => 
+      (t.title && t.title.toLowerCase().includes(val)) || 
+      (t.description && t.description.toLowerCase().includes(val))
+    ).slice(0, 5);
+    
+    // 2. Search Projects
+    const matchedProjects = projectsCache.filter(p => 
+      p.name && p.name.toLowerCase().includes(val)
+    ).slice(0, 5);
+    
+    // 3. Search Customers
+    const matchedCustomers = customersCache.filter(c => 
+      (c.name && c.name.toLowerCase().includes(val)) || 
+      (c.phone && c.phone.toLowerCase().includes(val)) || 
+      (c.taxId && c.taxId.toLowerCase().includes(val))
+    ).slice(0, 5);
+    
+    // 4. Search Quotations
+    const matchedQuotations = quotationsCache.filter(q => 
+      (q.code && q.code.toLowerCase().includes(val)) || 
+      (q.customerName && q.customerName.toLowerCase().includes(val))
+    ).slice(0, 5);
+    
+    let html = '';
+    
+    // Render Tasks (Purple)
+    if (matchedTasks.length) {
+      html += `<div style="font-size:11px; font-weight:700; color:#a855f7; padding:6px 12px; background:#f3e8ff; border-top:1px solid #e9d5ff; border-bottom:1px solid #e9d5ff; margin-top:4px;">🟣 รายการงาน (${matchedTasks.length})</div>`;
+      matchedTasks.forEach(t => {
+        html += `
+          <div class="search-item" onclick="clickGlobalSearchResult('task', '${t.id}')" style="padding:8px 12px; cursor:pointer; font-size:13px; color:#374151; transition:background 0.15s;" onmouseover="this.style.background='#faf5ff'" onmouseout="this.style.background='transparent'">
+            <strong style="color:#7c3aed;">${escapeHtml(t.title)}</strong>
+            <div style="font-size:11px; color:#6b7280; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(t.description || '')}</div>
+          </div>
+        `;
+      });
+    }
+    
+    // Render Projects (Green)
+    if (matchedProjects.length) {
+      html += `<div style="font-size:11px; font-weight:700; color:#15803d; padding:6px 12px; background:#dcfce7; border-top:1px solid #bbf7d0; border-bottom:1px solid #bbf7d0; margin-top:4px;">🟢 โครงการ (${matchedProjects.length})</div>`;
+      matchedProjects.forEach(p => {
+        html += `
+          <div class="search-item" onclick="clickGlobalSearchResult('project', '${p.id}')" style="padding:8px 12px; cursor:pointer; font-size:13px; color:#374151; transition:background 0.15s;" onmouseover="this.style.background='#f0fdf4'" onmouseout="this.style.background='transparent'">
+            <strong style="color:#166534;">${escapeHtml(p.name)}</strong>
+          </div>
+        `;
+      });
+    }
+    
+    // Render Customers (Blue)
+    if (matchedCustomers.length) {
+      html += `<div style="font-size:11px; font-weight:700; color:#1d4ed8; padding:6px 12px; background:#dbeafe; border-top:1px solid #bfdbfe; border-bottom:1px solid #bfdbfe; margin-top:4px;">🔵 ข้อมูลลูกค้า (${matchedCustomers.length})</div>`;
+      matchedCustomers.forEach(c => {
+        const details = [c.phone, c.taxId].filter(Boolean).join(' · ');
+        html += `
+          <div class="search-item" onclick="clickGlobalSearchResult('customer', '${c.id}')" style="padding:8px 12px; cursor:pointer; font-size:13px; color:#374151; transition:background 0.15s;" onmouseover="this.style.background='#eff6ff'" onmouseout="this.style.background='transparent'">
+            <strong style="color:#1e40af;">${escapeHtml(c.name)}</strong>
+            <div style="font-size:11px; color:#6b7280;">${escapeHtml(details)}</div>
+          </div>
+        `;
+      });
+    }
+    
+    // Render Quotations (Red)
+    if (matchedQuotations.length) {
+      html += `<div style="font-size:11px; font-weight:700; color:#b91c1c; padding:6px 12px; background:#fee2e2; border-top:1px solid #fecaca; border-bottom:1px solid #fecaca; margin-top:4px;">🔴 ใบเสนอราคา (${matchedQuotations.length})</div>`;
+      matchedQuotations.forEach(q => {
+        html += `
+          <div class="search-item" onclick="clickGlobalSearchResult('quotation', '${q.id}')" style="padding:8px 12px; cursor:pointer; font-size:13px; color:#374151; transition:background 0.15s;" onmouseover="this.style.background='#fef2f2'" onmouseout="this.style.background='transparent'">
+            <strong style="color:#991b1b;">${escapeHtml(q.code)}</strong> · <span style="font-size:12px; color:#4b5563;">${escapeHtml(q.customerName || '')}</span>
+          </div>
+        `;
+      });
+    }
+    
+    if (!html) {
+      html = `<div style="padding:16px; text-align:center; font-size:13px; color:var(--text-muted);">❌ ไม่พบข้อมูลที่ตรงกัน</div>`;
+    }
+    
+    resultsBox.innerHTML = html;
+    resultsBox.style.display = 'block';
+  });
+  
+  if (clearBtn) {
+    clearBtn.addEventListener('click', () => {
+      input.value = '';
+      resultsBox.style.display = 'none';
+      clearBtn.style.display = 'none';
+      input.focus();
+    });
+  }
+  
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      resultsBox.style.display = 'none';
+    }
+  });
+  
+  document.addEventListener('click', (e) => {
+    if (!input.contains(e.target) && !resultsBox.contains(e.target)) {
+      resultsBox.style.display = 'none';
+    }
+  });
+}
+
+window.clickGlobalSearchResult = function(type, id) {
+  const input = document.getElementById('globalSearchInput');
+  const resultsBox = document.getElementById('globalSearchResults');
+  if (input) input.value = '';
+  if (resultsBox) resultsBox.style.display = 'none';
+  const clearBtn = document.getElementById('globalSearchClear');
+  if (clearBtn) clearBtn.style.display = 'none';
+  
+  if (type === 'task') {
+    showPage('tasks');
+    openTaskDetailsModal(id);
+  } else if (type === 'project') {
+    showPage('projects');
+    setTimeout(() => {
+      const el = document.getElementById('projectList');
+      if (el) el.scrollIntoView({ behavior: 'smooth' });
+    }, 200);
+  } else if (type === 'customer') {
+    showPage('customers');
+    setTimeout(() => {
+      const el = document.getElementById('customerList');
+      if (el) el.scrollIntoView({ behavior: 'smooth' });
+    }, 200);
+  } else if (type === 'quotation') {
+    showPage('quotations');
+  }
+};
