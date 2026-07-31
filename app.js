@@ -1057,8 +1057,18 @@ window.toggleSubtaskStatus = async (idx, done) => {
   
   if (pct === 100) status = 'done';
   else if (pct > 0 && status === 'notyet') status = 'inprog';
+  else if (pct < 100 && status === 'done') status = 'inprog';
   
-  await updateDoc(doc(db, 'tasks', activeDetailsTaskId), { subtasks, percent: pct, status });
+  const updatesObj = { subtasks, percent: pct, status };
+  if (status === 'done') {
+    updatesObj.completedDate = t.completedDate || new Date().toISOString().slice(0, 10);
+    updatesObj.completedAt = t.completedAt || serverTimestamp();
+  } else {
+    updatesObj.completedDate = null;
+    updatesObj.completedAt = null;
+  }
+  
+  await updateDoc(doc(db, 'tasks', activeDetailsTaskId), updatesObj);
   
   const subText = subtasks[idx].text;
   await logActivity(`อัปเดตงาน "${t.title}": ${done ? '✅ ติ๊กเสร็จ' : '❌ ติ๊กยกเลิก'}งานย่อย "${subText}"`);
@@ -1081,8 +1091,18 @@ window.addNewSubtaskClick = async () => {
   
   if (pct === 100) status = 'done';
   else if (pct > 0 && status === 'notyet') status = 'inprog';
+  else if (pct < 100 && status === 'done') status = 'inprog';
   
-  await updateDoc(doc(db, 'tasks', activeDetailsTaskId), { subtasks, percent: pct, status });
+  const updatesObj = { subtasks, percent: pct, status };
+  if (status === 'done') {
+    updatesObj.completedDate = t.completedDate || new Date().toISOString().slice(0, 10);
+    updatesObj.completedAt = t.completedAt || serverTimestamp();
+  } else {
+    updatesObj.completedDate = null;
+    updatesObj.completedAt = null;
+  }
+  
+  await updateDoc(doc(db, 'tasks', activeDetailsTaskId), updatesObj);
   await logActivity(`อัปเดตงาน "${t.title}": ➕ เพิ่มงานย่อย "${text}"`);
   input.value = '';
 };
@@ -1104,8 +1124,18 @@ window.deleteSubtask = async (idx) => {
   
   let status = t.status;
   if (pct === 100 && subtasks.length > 0) status = 'done';
+  else if (pct < 100 && status === 'done') status = 'inprog';
   
-  await updateDoc(doc(db, 'tasks', activeDetailsTaskId), { subtasks, percent: pct, status });
+  const updatesObj = { subtasks, percent: pct, status };
+  if (status === 'done') {
+    updatesObj.completedDate = t.completedDate || new Date().toISOString().slice(0, 10);
+    updatesObj.completedAt = t.completedAt || serverTimestamp();
+  } else {
+    updatesObj.completedDate = null;
+    updatesObj.completedAt = null;
+  }
+  
+  await updateDoc(doc(db, 'tasks', activeDetailsTaskId), updatesObj);
   await logActivity(`อัปเดตงาน "${t.title}": ➖ ลบงานย่อย "${delText}"`);
 };
 
@@ -1307,13 +1337,19 @@ window.onModalStatusChange = async (val) => {
   let updates = { status: val };
   if (val === 'done') {
     updates.percent = 100;
+    updates.completedDate = t.completedDate || new Date().toISOString().slice(0, 10);
+    updates.completedAt = t.completedAt || serverTimestamp();
     if (t.subtasks && t.subtasks.length) {
       updates.subtasks = t.subtasks.map(s => ({ ...s, done: true }));
     }
-  } else if (val === 'notyet') {
-    updates.percent = 0;
-    if (t.subtasks && t.subtasks.length) {
-      updates.subtasks = t.subtasks.map(s => ({ ...s, done: false }));
+  } else {
+    updates.completedDate = null;
+    updates.completedAt = null;
+    if (val === 'notyet') {
+      updates.percent = 0;
+      if (t.subtasks && t.subtasks.length) {
+        updates.subtasks = t.subtasks.map(s => ({ ...s, done: false }));
+      }
     }
   }
   
@@ -1414,7 +1450,12 @@ function renderDayCell(d, grid) {
   
   // 1. Render Tasks
   const isPrivateMode = visibleUids();
-  let dayTasks = tasksCache.filter(t => t.dueDate === dateStr);
+  let dayTasks = tasksCache.filter(t => {
+    if (t.status === 'done') {
+      return (t.completedDate || t.dueDate) === dateStr;
+    }
+    return t.dueDate === dateStr;
+  });
   
   if (isPrivateMode) {
     dayTasks = dayTasks.filter(t => (t.assignees && t.assignees.includes(profile.uid)) || (t.assignee === profile.uid));
@@ -1898,6 +1939,30 @@ window.openRenewalModal = function(id) {
   const noteEl = document.getElementById('renewNote');
   if (noteEl) noteEl.value = '';
   
+  // Populate current contract reference box
+  const infoBox = document.getElementById('renewCurrentInfoBox');
+  if (infoBox) {
+    infoBox.style.display = 'flex';
+    
+    let dateLabel = '-';
+    if (c.contractEndDate) {
+      const parts = c.contractEndDate.split('-');
+      if (parts.length === 3) {
+        const yr = parseInt(parts[0], 10) + 543;
+        dateLabel = `${parts[2]}/${parts[1]}/${yr} (${c.contractEndDate})`;
+      }
+    }
+    
+    const curEndDateEl = document.getElementById('renewCurrentEndDate');
+    if (curEndDateEl) curEndDateEl.textContent = dateLabel;
+    
+    const curQuotEl = document.getElementById('renewCurrentQuot');
+    if (curQuotEl) curQuotEl.textContent = c.linkedQuotationCode || 'ไม่ได้ผูกใบเสนอราคา';
+    
+    const curNoteEl = document.getElementById('renewCurrentNote');
+    if (curNoteEl) curNoteEl.textContent = c.note || 'ไม่มีหมายเหตุ';
+  }
+  
   const select = document.getElementById('renewQuotationSelect');
   if (select) {
     const custName = (c.name || '').toLowerCase().trim();
@@ -2031,6 +2096,65 @@ window.deleteCustomer = async (id) => {
   }
 };
 
+let customerContractFilter = 'all';
+
+window.filterCustomerContract = function(status) {
+  customerContractFilter = status;
+  
+  const buttons = {
+    all: 'btnFilterCustAll',
+    active: 'btnFilterCustActive',
+    expiring: 'btnFilterCustExpiring',
+    expired: 'btnFilterCustExpired'
+  };
+  
+  Object.keys(buttons).forEach(key => {
+    const btn = document.getElementById(buttons[key]);
+    if (btn) {
+      if (key === status) {
+        btn.classList.add('active');
+        btn.style.background = '#e2e8f0';
+      } else {
+        btn.classList.remove('active');
+        btn.style.background = 'none';
+      }
+    }
+  });
+  
+  filterAndRenderCustomers();
+};
+
+window.filterAndRenderCustomers = function() {
+  const searchInput = document.getElementById('customerSearch');
+  const query = searchInput ? searchInput.value.trim().toLowerCase() : '';
+  
+  let list = [...customersCache];
+  
+  if (query) {
+    list = list.filter(c => 
+      (c.name || '').toLowerCase().includes(query) || 
+      (c.taxId || '').toLowerCase().includes(query)
+    );
+  }
+  
+  if (customerContractFilter !== 'all') {
+    list = list.filter(c => {
+      if (!c.contractEndDate) return false;
+      const days = daysUntil(c.contractEndDate);
+      if (customerContractFilter === 'active') {
+        return days > 30;
+      } else if (customerContractFilter === 'expiring') {
+        return days <= 30 && days >= 0;
+      } else if (customerContractFilter === 'expired') {
+        return days < 0;
+      }
+      return true;
+    });
+  }
+  
+  renderCustomers(list);
+};
+
 function renderCustomers(customers) {
   const box = document.getElementById('customerList');
   if (customers.length === 0) {
@@ -2076,6 +2200,80 @@ function renderCustomers(customers) {
       `;
     }
     
+    // GATHER RELATED TASKS & QUOTATIONS (360 DASHBOARD)
+    const activeTasks = tasksCache.filter(t => {
+      if (t.status === 'done') return false;
+      const proj = projectsCache.find(p => p.id === t.projectId);
+      if (proj && proj.customerId === c.id) return true;
+      const cName = (c.name || '').toLowerCase();
+      return (t.title || '').toLowerCase().includes(cName) || (t.description || '').toLowerCase().includes(cName);
+    });
+    
+    const relatedQuotes = quotationsCache.filter(q => 
+      q.customerId === c.id || 
+      (q.customerName || '').toLowerCase().trim() === (c.name || '').toLowerCase().trim()
+    );
+    
+    let tasksListHtml = '<div style="color:var(--text-muted); font-size:11px;">ไม่มีงานค้างอยู่ในระบบ</div>';
+    if (activeTasks.length > 0) {
+      tasksListHtml = activeTasks.map(t => {
+        const assignedUsers = t.assignees 
+          ? t.assignees.map(uid => usersCache.find(x => x.uid === uid)).filter(Boolean)
+          : (t.assignee ? [usersCache.find(x => x.uid === t.assignee)].filter(Boolean) : []);
+        
+        const avatars = assignedUsers.map(u => {
+          const uColor = getEmployeeColor(u.name);
+          return `<span class="avatar-initial" style="background:${uColor.border}; width:15px; height:15px; font-size:8px; color:#fff;" title="${u.name}">${getEmployeeInitials(u.name)}</span>`;
+        }).join('');
+        
+        const days = daysUntil(t.dueDate);
+        const dueLabel = days < 0 
+          ? `<span style="color:#ef4444; font-weight:700;">(🚨 เลยกำหนด ${Math.abs(days)} วัน)</span>` 
+          : `(ส่ง: ${t.dueDate || '-'})`;
+        
+        return `
+          <div style="display:flex; align-items:center; justify-content:space-between; font-size:11.5px; padding:3px 0; border-bottom:1px dashed #f1f5f9;">
+            <span style="cursor:pointer; text-decoration:underline;" onclick="openTaskDetailsModal('${t.id}')">📌 ${t.title} ${dueLabel}</span>
+            <div style="display:flex; align-items:center; gap:2px;">${avatars}</div>
+          </div>
+        `;
+      }).join('');
+    }
+    
+    let quotesListHtml = '<div style="color:var(--text-muted); font-size:11px;">ไม่มีประวัติใบเสนอราคา</div>';
+    if (relatedQuotes.length > 0) {
+      quotesListHtml = relatedQuotes.slice(0, 3).map(q => {
+        return `
+          <div style="display:flex; align-items:center; justify-content:space-between; font-size:11.5px; padding:3px 0; border-bottom:1px dashed #f1f5f9;">
+            <span style="color:#2563eb; cursor:pointer; font-weight:600;" onclick="printQuotationDocument('${q.id}')"><i class="fa-solid fa-file-invoice-dollar"></i> ${q.code}</span>
+            <span style="font-weight:700;">฿${parseFloat(q.total || 0).toLocaleString()} บ.</span>
+          </div>
+        `;
+      }).join('');
+      if (relatedQuotes.length > 3) {
+        quotesListHtml += `<div style="font-size:10px; color:var(--text-muted); text-align:right;">และอีก ${relatedQuotes.length - 3} ใบ...</div>`;
+      }
+    }
+    
+    const relationsHtml = `
+      <div style="margin-top: 10px; border-top: 1px solid var(--border-color); padding-top: 8px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; cursor:pointer;" onclick="document.getElementById('relations-body-${c.id}').style.display = document.getElementById('relations-body-${c.id}').style.display === 'none' ? 'block' : 'none'">
+          <strong style="font-size:11.5px; color:var(--text-dark);"><i class="fa-solid fa-chart-pie"></i> ข้อมูลเชื่อมโยง 360° (คลิกเพื่อดู)</strong>
+          <span style="font-size:10px; color:#2563eb; font-weight:700;">งาน (${activeTasks.length}) / ใบราคา (${relatedQuotes.length})</span>
+        </div>
+        <div id="relations-body-${c.id}" style="display:none; margin-top:8px; padding:8px; background:#f8fafc; border-radius:6px; border:1px solid var(--border-color);">
+          <div style="margin-bottom:8px;">
+            <div style="font-weight:700; font-size:11px; color:#475569; margin-bottom:4px;"><i class="fa-solid fa-list-check"></i> งานค้างของเจ้านี้:</div>
+            ${tasksListHtml}
+          </div>
+          <div>
+            <div style="font-weight:700; font-size:11px; color:#475569; margin-bottom:4px;"><i class="fa-solid fa-file-invoice-dollar"></i> ประวัติใบเสนอราคา:</div>
+            ${quotesListHtml}
+          </div>
+        </div>
+      </div>
+    `;
+    
     return `
       <div class="card" id="customer-card-${c.id}" style="display:flex; flex-direction:column; gap:4px; transition: all 0.2s;">
         <div style="display:flex; justify-content:space-between; align-items:flex-start">
@@ -2090,6 +2288,7 @@ function renderCustomers(customers) {
           ${c.address ? `<div style="white-space:pre-line; margin-top:2px;"><strong>ที่อยู่:</strong> ${c.address}</div>` : ''}
         </div>
         ${c.note ? `<div style="margin-top:6px; font-size:12.5px; color:var(--text-muted); background:#f8fafc; padding:8px; border-radius:6px; border:1px solid var(--border-color)">${c.note}</div>` : ''}
+        ${relationsHtml}
         ${historyHtml}
         <div class="card-actions" style="margin-top:8px; display:flex; gap:6px;">
           <button class="icon-btn edit" onclick="editCustomer('${c.id}')" style="flex:1;"><i class="fa-solid fa-pen-to-square"></i> แก้ไข</button>
@@ -2610,6 +2809,7 @@ function initRealtimeListeners() {
     tasksCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     
     filterAndRenderTasks();
+    filterAndRenderCustomers(); // Update 360° dashboard counts on customer cards
     renderProjects(projectsCache); // re-render projects so task list updates inside cards
     renderDashboardStats(tasksCache, projectsCache, customersCache, usersCache);
     renderTeamMembers(usersCache, tasksCache);
@@ -2632,7 +2832,7 @@ function initRealtimeListeners() {
       customersCache.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
     projCust.value = selectedCust;
     
-    renderCustomers(customersCache);
+    filterAndRenderCustomers();
     renderDashboardStats(tasksCache, projectsCache, customersCache, usersCache);
     checkContractReminders(customersCache);
   });
@@ -2652,6 +2852,7 @@ function initRealtimeListeners() {
   onSnapshot(q, (snap) => {
     quotationsCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     filterAndRenderQuotations();
+    filterAndRenderCustomers(); // Update 360° dashboard quotes count on customer cards
     renderDashboardStats(tasksCache, projectsCache, customersCache, usersCache);
   });
 
@@ -2687,6 +2888,63 @@ function initRealtimeListeners() {
 }
 
 // ---------- RENDER VIEWS & CONTROLLERS ----------
+
+let currentTaskView = 'list';
+
+window.switchTaskView = function(view) {
+  currentTaskView = view;
+  
+  const btnList = document.getElementById('btnTaskListView');
+  const btnKanban = document.getElementById('btnTaskKanbanView');
+  const listContainer = document.getElementById('taskList');
+  const kanbanContainer = document.getElementById('taskKanban');
+  
+  if (view === 'kanban') {
+    if (btnList) {
+      btnList.classList.remove('active');
+      btnList.style.background = 'none';
+    }
+    if (btnKanban) {
+      btnKanban.classList.add('active');
+      btnKanban.style.background = '#e2e8f0';
+    }
+    if (listContainer) listContainer.style.display = 'none';
+    if (kanbanContainer) kanbanContainer.style.display = 'block';
+  } else {
+    if (btnList) {
+      btnList.classList.add('active');
+      btnList.style.background = '#e2e8f0';
+    }
+    if (btnKanban) {
+      btnKanban.classList.remove('active');
+      btnKanban.style.background = 'none';
+    }
+    if (listContainer) listContainer.style.display = 'grid';
+    if (kanbanContainer) kanbanContainer.style.display = 'none';
+  }
+  
+  filterAndRenderTasks();
+};
+
+window.updateTaskStatusDirect = async function(taskId, newStatus) {
+  const t = tasksCache.find(x => x.id === taskId);
+  if (!t) return;
+  
+  const statusThai = { notyet: 'ยังไม่เริ่ม', inprog: 'กำลังทำ', done: 'เสร็จแล้ว' }[newStatus];
+  
+  try {
+    const updates = { status: newStatus };
+    if (newStatus === 'done') {
+      updates.completedDate = new Date().toISOString().slice(0, 10);
+      updates.completedAt = serverTimestamp();
+    }
+    await updateDoc(doc(db, 'tasks', taskId), updates);
+    await logActivity(`📋 ปรับสถานะงาน "${t.title}" เป็น "${statusThai}"`);
+    showToast('ปรับสถานะงานสำเร็จ', 'success');
+  } catch(err) {
+    alert('เกิดข้อผิดพลาดในการเปลี่ยนสถานะ: ' + err.message);
+  }
+};
 
 window.filterAndRenderTasks = function() {
   const searchEl = document.getElementById('taskSearch');
@@ -2726,7 +2984,11 @@ window.filterAndRenderTasks = function() {
     list = list.filter(t => t.priority === priorityFilter);
   }
   
-  renderTasksList(list);
+  if (currentTaskView === 'kanban') {
+    renderTaskKanban(list);
+  } else {
+    renderTasksList(list);
+  }
 };
 
 window.clearTaskFilters = function() {
@@ -2794,7 +3056,11 @@ window.applyQuickFilter = function(filterType) {
     list = list.filter(t => t.status !== 'done' && t.dueDate && t.dueDate < todayStr);
   }
   
-  renderTasksList(list);
+  if (currentTaskView === 'kanban') {
+    renderTaskKanban(list);
+  } else {
+    renderTasksList(list);
+  }
 };
 
 window.filterAndRenderQuotations = function() {
@@ -2819,7 +3085,6 @@ function renderTasksList(tasks) {
   }
   
   box.innerHTML = tasks.map(t => {
-    // Map assignees names
     const assignedUsers = t.assignees 
       ? t.assignees.map(uid => usersCache.find(x => x.uid === uid)).filter(Boolean)
       : (t.assignee ? [usersCache.find(x => x.uid === t.assignee)].filter(Boolean) : []);
@@ -2829,6 +3094,15 @@ function renderTasksList(tasks) {
     const canEdit = profile.role === 'admin' || (t.assignees ? t.assignees.includes(profile.uid) : (t.assignee === profile.uid));
     const prioClass = t.priority || 'mid';
     const prioLabel = { urgent: 'ด่วนที่สุด', high: 'สูง', mid: 'กลาง', low: 'ต่ำ' }[prioClass];
+    const statusLabel = { notyet: 'ยังไม่เริ่ม', inprog: 'กำลังทำ', done: 'เสร็จแล้ว' }[t.status];
+    
+    let overdueLabel = '';
+    if (t.status !== 'done' && t.dueDate) {
+      const days = daysUntil(t.dueDate);
+      if (days < 0) {
+        overdueLabel = `<span style="color:#ef4444; font-weight:700; margin-left:4px;"><i class="fa-solid fa-triangle-exclamation"></i> (🚨 เลยกำหนดส่ง ${Math.abs(days)} วัน)</span>`;
+      }
+    }
     
     let progressSection = '';
     if (t.subtasks && t.subtasks.length > 0) {
@@ -2861,12 +3135,12 @@ function renderTasksList(tasks) {
       <div class="card task-card ${prioClass}" onclick="openTaskDetailsModal('${t.id}')">
         <div class="task-card-header">
           <span class="task-card-title">${t.title}</span>
-          <span class="badge ${t.status}">${t.status}</span>
+          <span class="badge ${t.status}">${statusLabel}</span>
         </div>
         <div class="task-card-meta">
           <div class="meta-item"><i class="fa-solid fa-folder"></i> ${proj ? proj.name : '-'}</div>
           <div class="meta-item"><i class="fa-solid fa-user-check"></i> ${namesLabel}</div>
-          <div class="meta-item"><i class="fa-solid fa-calendar-day"></i> ${t.dueDate || '-'}</div>
+          <div class="meta-item"><i class="fa-solid fa-calendar-day"></i> ${t.dueDate || '-'} ${overdueLabel}</div>
           <div class="meta-item"><span class="badge ${prioClass}" style="font-size:9px; padding:1px 5px">${prioLabel}</span></div>
         </div>
         ${progressSection}
@@ -2879,6 +3153,85 @@ function renderTasksList(tasks) {
       </div>
     `;
   }).join('');
+}
+
+function renderTaskKanban(tasks) {
+  const notyetList = tasks.filter(t => t.status === 'notyet');
+  const inprogList = tasks.filter(t => t.status === 'inprog');
+  const doneList = tasks.filter(t => t.status === 'done');
+  
+  document.getElementById('kanbanCountNotyet').textContent = notyetList.length;
+  document.getElementById('kanbanCountInprog').textContent = inprogList.length;
+  document.getElementById('kanbanCountDone').textContent = doneList.length;
+  
+  const drawColumn = (boxId, list) => {
+    const box = document.getElementById(boxId);
+    if (!box) return;
+    
+    if (list.length === 0) {
+      box.innerHTML = '<p class="muted" style="text-align:center; font-size:11px; margin-top:20px; color:#94a3b8;">ไม่มีงาน</p>';
+      return;
+    }
+    
+    box.innerHTML = list.map(t => {
+      const assignedUsers = t.assignees 
+        ? t.assignees.map(uid => usersCache.find(x => x.uid === uid)).filter(Boolean)
+        : (t.assignee ? [usersCache.find(x => x.uid === t.assignee)].filter(Boolean) : []);
+      
+      const avatarsHtml = assignedUsers.map(u => {
+        const uColor = getEmployeeColor(u.name);
+        return `<span class="avatar-initial" style="background:${uColor.border}; width:16px; height:16px; font-size:9px; color:#fff;" title="${u.name}">${getEmployeeInitials(u.name)}</span>`;
+      }).join('');
+      
+      const proj = projectsCache.find(x => x.id === t.projectId);
+      const prioClass = t.priority || 'mid';
+      
+      let overdueLabel = '';
+      if (t.status !== 'done' && t.dueDate) {
+        const days = daysUntil(t.dueDate);
+        if (days < 0) {
+          overdueLabel = `<span style="color:#ef4444; font-weight:700; font-size:11px;"><i class="fa-solid fa-triangle-exclamation"></i> เกิน ${Math.abs(days)} วัน</span>`;
+        }
+      }
+      
+      let actionButtons = '';
+      if (t.status === 'notyet') {
+        actionButtons = `<button type="button" class="kanban-action-btn move-next" onclick="event.stopPropagation(); updateTaskStatusDirect('${t.id}', 'inprog')">เริ่มงาน <i class="fa-solid fa-arrow-right"></i></button>`;
+      } else if (t.status === 'inprog') {
+        actionButtons = `
+          <button type="button" class="kanban-action-btn" onclick="event.stopPropagation(); updateTaskStatusDirect('${t.id}', 'notyet')"><i class="fa-solid fa-arrow-left"></i> ดึงกลับ</button>
+          <button type="button" class="kanban-action-btn move-next" onclick="event.stopPropagation(); updateTaskStatusDirect('${t.id}', 'done')">เสร็จงาน <i class="fa-solid fa-arrow-right"></i></button>
+        `;
+      } else if (t.status === 'done') {
+        actionButtons = `<button type="button" class="kanban-action-btn" onclick="event.stopPropagation(); updateTaskStatusDirect('${t.id}', 'inprog')"><i class="fa-solid fa-arrow-left"></i> ย้ายกลับมาทำ</button>`;
+      }
+      
+      return `
+        <div class="kanban-card ${prioClass}" style="border-left-color: ${prioClass === 'urgent' ? 'var(--urgent-color)' : prioClass === 'high' ? 'var(--high-color)' : prioClass === 'mid' ? 'var(--medium-color)' : 'var(--low-color)'};" onclick="openTaskDetailsModal('${t.id}')">
+          <div class="kanban-card-title">${escapeHtml(t.title)}</div>
+          
+          <div class="kanban-card-meta" style="margin-top:2px;">
+            <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:180px;"><i class="fa-solid fa-folder"></i> ${proj ? proj.name : '-'}</div>
+          </div>
+          
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px;">
+            <div class="kanban-card-meta">
+              <i class="fa-solid fa-calendar-day"></i> ${t.dueDate || '-'} ${overdueLabel}
+            </div>
+            <div class="kanban-avatars-row">${avatarsHtml}</div>
+          </div>
+          
+          <div class="kanban-card-actions" onclick="event.stopPropagation()">
+            ${actionButtons}
+          </div>
+        </div>
+      `;
+    }).join('');
+  };
+  
+  drawColumn('kanbanListNotyet', notyetList);
+  drawColumn('kanbanListInprog', inprogList);
+  drawColumn('kanbanListDone', doneList);
 }
 
 function renderDashboardStats(tasks, projects, customers, users) {
@@ -3391,8 +3744,28 @@ window.exportCSVGeneric = (type) => {
     updatesCache.forEach(u => rows.push([u.date, nameOf(u.uid), u.text]));
     downloadCSV('asg-work-daily-updates.csv', rows);
   } else if (type === 'customers') {
-    const rows = [['ชื่อลูกค้า/บริษัท', 'เลขประจำตัวผู้เสียภาษี', 'เบอร์โทร', 'วันครบสัญญา', 'ที่อยู่', 'หมายเหตุ']];
-    customersCache.forEach(c => rows.push([c.name, c.taxId, c.phone, c.contractEndDate, c.address, c.note]));
+    const rows = [['ชื่อลูกค้า/บริษัท', 'เลขประจำตัวผู้เสียภาษี', 'เบอร์โทร', 'วันครบสัญญา', 'ที่อยู่', 'หมายเหตุ', 'ใบเสนอราคาที่ผูกปัจจุบัน', 'ประวัติสัญญารอบก่อนหน้า']];
+    customersCache.forEach(c => {
+      let historyText = '';
+      if (c.contractHistory && c.contractHistory.length > 0) {
+        const sorted = [...c.contractHistory].sort((a, b) => b.renewedAt.localeCompare(a.renewedAt));
+        historyText = sorted.map(h => {
+          const quotStr = h.quotationCode ? ` (ใบเสนอราคา: ${h.quotationCode})` : '';
+          const noteStr = h.note ? ` | โน้ต: ${h.note}` : '';
+          return `หมดอายุ: ${h.contractEndDate}${quotStr}${noteStr}`;
+        }).join(' ; ');
+      }
+      rows.push([
+        c.name,
+        c.taxId,
+        c.phone,
+        c.contractEndDate,
+        c.address,
+        c.note,
+        c.linkedQuotationCode || '-',
+        historyText || '-'
+      ]);
+    });
     downloadCSV('asg-work-customers.csv', rows);
   } else if (type === 'quotations') {
     const rows = [['เลขที่ใบเสนอราคา', 'วันที่เอกสาร', 'ลูกค้า', 'ยอดเงินรวม (บาท)', 'ผู้จัดทำ', 'สถานะ']];
