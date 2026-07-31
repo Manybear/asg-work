@@ -1012,6 +1012,9 @@ h2.sec {
 }
 
 @media print {
+  .print-header {
+    display: block !important;
+  }
   nav, .filter-bar, .btn, .modal-bg, .card-actions, #bellBtn, #quotationPrintModal > .modal > div:first-child {
     display: none !important;
   }
