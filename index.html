@@ -15,7 +15,7 @@
   <!-- html2pdf.js for A4 Quotation PDF downloads -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
   <!-- Main Stylesheet -->
-  <link rel="stylesheet" href="style.css?v=4.6">
+  <link rel="stylesheet" href="style.css?v=4.7">
 </head>
 <body>
 
@@ -389,6 +389,11 @@
         <input id="custNote" placeholder="ระบุหมายเหตุหรือข้อตกลงสัญญาเพิ่มเติม..." style="width: 100%;">
       </div>
       
+      <div class="form-group" style="display: flex; flex-direction: column; gap: 4px;">
+        <label style="font-size: 12px; font-weight: 700; color: var(--text-dark);">ลิงก์แนบหลักฐาน / สลิปโอนเงิน (เช่น ลิงก์ Drive/DropBox/รูปภาพ)</label>
+        <input id="custPaymentLink" placeholder="วางลิงก์หลักฐานการชำระเงินหรือสลิปสัญญา..." style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); font-family: var(--font-family); background:#fff; color:var(--text-dark); height:40px;">
+      </div>
+      
       <div style="display:flex; justify-content:flex-end; gap:8px; margin-top: 8px;">
         <button type="submit" id="custSubmitBtn"><i class="fa-solid fa-plus"></i> บันทึกข้อมูลลูกค้า</button>
         <button type="button" class="btn btn-ghost cancel-edit-btn" id="custCancelBtn" onclick="cancelEditCustomer()">ยกเลิก</button>
@@ -452,7 +457,7 @@
           <input type="text" id="qtCustomer" list="customersDatalist" placeholder="พิมพ์ชื่อลูกค้า/บริษัท หรือเลือกจากรายการ..." required style="width:100%; padding:10px; border-radius:8px; border:1px solid var(--border-color); background: #fff; color: var(--text-dark);">
           <datalist id="customersDatalist"></datalist>
         </div>
-        <div class="form-2col">
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:12px;">
           <div class="form-row">
             <label>ชื่อบริษัท/ผู้ออกเอกสาร *</label>
             <input type="text" id="qtCompanyName" value="บริษัท แอดวานซ์ บิสซิเนส แมกกาซีน จำกัด" required>
@@ -460,6 +465,10 @@
           <div class="form-row">
             <label>ที่อยู่ออกเอกสาร *</label>
             <input type="text" id="qtCompanyAddress" value="427/55 ถนนลาดพร้าว แขวงจอมพล เขตจตุจักร กรุงเทพฯ 10900" required>
+          </div>
+          <div class="form-row">
+            <label>ผู้จัดทำ / ผู้เตรียมเอกสาร *</label>
+            <input type="text" id="qtPreparedBy" placeholder="ชื่อผู้จัดทำ หรือ ชื่อบริษัท" required style="width:100%; padding:10px; border-radius:8px; border:1px solid var(--border-color); background:#fff; color:var(--text-dark); height:42px;">
           </div>
         </div>
         
@@ -642,7 +651,44 @@
           <label>เลขประจำตัวผู้เสียภาษี (Tax ID)</label>
           <input id="setCompanyTaxId" placeholder="เลขประจำตัวผู้เสียภาษี 13 หลัก" style="width: 100%;">
         </div>
-        <button type="submit" class="btn btn-primary" style="margin-top: 10px;"><i class="fa-solid fa-floppy-disk"></i> บันทึกข้อมูลบริษัท</button>
+        
+        <!-- LINE Official Account Configuration -->
+        <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid var(--border-color);">
+          <h4 style="font-size: 13.5px; font-weight: 700; color: #06c755; margin-bottom: 10px; display:flex; align-items:center; gap:6px;">
+            <i class="fa-brands fa-line" style="font-size: 16px;"></i> การเชื่อมต่อแจ้งเตือน LINE Official Account (LINE OA)
+          </h4>
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+            <div class="form-row">
+              <label>Channel Access Token (จาก LINE OA Developers Console) *</label>
+              <input type="password" id="setLineNotifyToken" placeholder="รหัส Channel Access Token ยาว ๆ..." style="width: 100%;">
+            </div>
+            <div class="form-row">
+              <label>LINE Group ID (ไอดีกลุ่มแชท เช่น C1234...) *</label>
+              <input type="text" id="setLineGroupId" placeholder="ใส่ Group ID ของกลุ่มแชทไลน์" style="width: 100%;">
+            </div>
+          </div>
+          <div class="form-row">
+            <label>Google Apps Script Web App URL (ตัวกลางส่งข้อความเพื่อหลีกเลี่ยง CORS)</label>
+            <input type="url" id="setLineNotifyUrl" placeholder="https://script.google.com/macros/s/.../exec" style="width: 100%;">
+            <p style="font-size: 11px; color: var(--text-muted); margin-top: 4px; line-height: 1.4;">
+              * เนื่องจากข้อจำกัดความปลอดภัยของบราวเซอร์ (CORS Block) ต้องติดตั้ง Google Apps Script แบบ Web App ฟรี เพื่อทำหน้าที่เป็นตัวกลางรับข้อความจากระบบไปส่งหา LINE OA API
+            </p>
+          </div>
+          <div class="form-row" style="display:flex; flex-direction:column; gap:8px; margin-top:8px;">
+            <label style="font-weight: 700; font-size:12.5px;">เงื่อนไขส่งแจ้งเตือนเข้าแชท LINE กลุ่มอัตโนมัติ:</label>
+            <label style="display:flex; align-items:center; gap:8px; font-size:12.5px; font-weight: normal; cursor:pointer;">
+              <input type="checkbox" id="setLineNotifyOnNewTask" style="width:16px; height:16px; accent-color:#06c755;"> 📝 แจ้งเตือนเมื่อสร้าง/มอบหมายงานใหม่
+            </label>
+            <label style="display:flex; align-items:center; gap:8px; font-size:12.5px; font-weight: normal; cursor:pointer;">
+              <input type="checkbox" id="setLineNotifyOnQuotApproved" style="width:16px; height:16px; accent-color:#06c755;"> 💰 แจ้งเตือนเมื่อใบเสนอราคาได้รับการ "อนุมัติแล้ว"
+            </label>
+            <label style="display:flex; align-items:center; gap:8px; font-size:12.5px; font-weight: normal; cursor:pointer;">
+              <input type="checkbox" id="setLineNotifyOnContractExpiring" style="width:16px; height:16px; accent-color:#06c755;"> 📅 แจ้งเตือนสัญญาบริการลูกค้าใกล้หมดอายุ (≤ 30 วัน)
+            </label>
+          </div>
+        </div>
+        
+        <button type="submit" class="btn btn-primary" style="margin-top: 15px;"><i class="fa-solid fa-floppy-disk"></i> บันทึกข้อมูลระบบ</button>
       </form>
     </div>
 
@@ -902,6 +948,7 @@
         <span>🔒 งานนี้ถูกล็อกป้องกันการลบ/แก้ไข</span>
         <button type="button" class="btn btn-ghost" id="detTaskUnlockBtn" onclick="unlockTaskDirect()" style="padding:4px 10px; font-size:11px; color:#b91c1c; border:1px solid #fca5a5; background:#fef2f2;"><i class="fa-solid fa-lock-open"></i> ปลดล็อก</button>
       </div>
+      <button type="button" class="btn btn-ghost" id="detTaskLockBtn" onclick="lockTaskDirect()" style="display:none; padding:6px 12px; font-size:12.5px; color:#b91c1c; border:1px solid #fca5a5; background:#fef2f2; font-weight:700;"><i class="fa-solid fa-lock"></i> ล็อกงานนี้</button>
       <button class="btn btn-ghost" onclick="closeTaskDetailsModal()" style="margin-left:auto;">ปิดหน้าต่าง</button>
     </div>
   </div>
@@ -966,6 +1013,10 @@
         <label>หมายเหตุรอบสัญญาใหม่</label>
         <input type="text" id="renewNote" placeholder="เช่น ต่ออายุสัญญาปีที่ 2, ยอดเงิน..." value="">
       </div>
+      <div class="form-row">
+        <label>ลิงก์หลักฐาน / สลิปโอนเงินสัญญาใหม่</label>
+        <input type="url" id="renewPaymentLink" placeholder="วางลิงก์หลักฐาน หรือลิงก์สลิปโอนเงินรอบใหม่..." value="" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); font-family: var(--font-family);">
+      </div>
       <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:16px;">
         <button type="submit" class="btn btn-primary"><i class="fa-solid fa-arrows-rotate"></i> ยืนยันต่ออายุสัญญา</button>
         <button type="button" class="btn btn-ghost" onclick="closeRenewalModal()">ยกเลิก</button>
@@ -975,6 +1026,6 @@
 </div>
 
 <!-- Firebase scripts -->
-<script type="module" src="app.js?v=4.6"></script>
+<script type="module" src="app.js?v=4.7"></script>
 </body>
 </html>
