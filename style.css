@@ -1328,3 +1328,18 @@ h2.sec {
   gap: 2px;
   align-items: center;
 }
+
+/* RECYCLE BIN TABLE STYLING */
+#recycleBinPanel table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 10px;
+}
+#recycleBinPanel th, #recycleBinPanel td {
+  border-bottom: 1px solid var(--border-color);
+  padding: 10px;
+  vertical-align: middle;
+}
+#recycleBinPanel tr:hover td {
+  background: #f8fafc;
+}
