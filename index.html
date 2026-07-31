@@ -15,7 +15,7 @@
   <!-- html2pdf.js for A4 Quotation PDF downloads -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
   <!-- Main Stylesheet -->
-  <link rel="stylesheet" href="style.css?v=4.5">
+  <link rel="stylesheet" href="style.css?v=4.6">
 </head>
 <body>
 
@@ -236,6 +236,12 @@
         <option value="mid">กลาง</option>
         <option value="low">ต่ำ</option>
       </select>
+      <select id="sortTasks" onchange="filterAndRenderTasks()" style="border-color:#cbd5e1; font-weight:700; color:var(--text-dark);">
+        <option value="created">เรียงตาม: วันที่สร้าง (ใหม่สุด)</option>
+        <option value="dueAsc">เรียงตาม: กำหนดส่ง (ใกล้สุดก่อน)</option>
+        <option value="dueDesc">เรียงตาม: กำหนดส่ง (ไกลสุดก่อน)</option>
+        <option value="priority">เรียงตาม: ความเร่งด่วน (ด่วนสุดก่อน)</option>
+      </select>
       <button class="btn btn-ghost" onclick="clearTaskFilters()" style="padding: 6px 12px; font-size:12px;">ล้างตัวกรอง</button>
     </div>
 
@@ -423,7 +429,7 @@
     <div class="card" id="quotationFormPanel" style="display:none; margin-bottom: 20px;">
       <h3 style="font-size:15px; font-weight:700; margin-bottom:15px;" id="quotationFormTitle">ออกใบเสนอราคา</h3>
       <form id="quotationForm">
-        <div class="form-2col">
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap:12px;">
           <div class="form-row">
             <label>เลขที่ใบเสนอราคา *</label>
             <input type="text" id="qtCode" placeholder="เช่น QT-2026-001" required>
@@ -431,6 +437,14 @@
           <div class="form-row">
             <label>วันที่เอกสาร *</label>
             <input type="date" id="qtDate" required>
+          </div>
+          <div class="form-row">
+            <label>สถานะใบเสนอราคา *</label>
+            <select id="qtStatusSelect" required style="width:100%; padding:10px; border-radius:8px; border:1px solid var(--border-color); background:#fff; height:42px;">
+              <option value="pending" selected>รออนุมัติ (Pending)</option>
+              <option value="approved">อนุมัติแล้ว (Approved)</option>
+              <option value="void">ยกเลิก (Void)</option>
+            </select>
           </div>
         </div>
         <div class="form-row">
@@ -632,6 +646,29 @@
       </form>
     </div>
 
+    <!-- Recycle Bin Panel (Task Soft Deleted items) -->
+    <div class="card" id="recycleBinPanel">
+      <h3 style="font-size:15px; font-weight:700; margin-bottom:15px; color:#b91c1c;"><i class="fa-solid fa-trash-can"></i> ถังขยะกู้คืนงานย่อย (Recycle Bin)</h3>
+      <p class="ts" style="margin-bottom:12px;">งานที่ถูกลบจะย้ายมาพักไว้ที่นี่ พนักงานที่สร้างงานชิ้นนั้นหรือแอดมินสามารถกดกู้คืนงานกลับไปที่เดิมได้</p>
+      <div style="overflow-x:auto;">
+        <table style="width:100%; border-collapse:collapse; min-width:600px; font-size:13px;">
+          <thead>
+            <tr style="background:#f1f5f9; text-align:left; border-bottom:2px solid var(--border-color);">
+              <th style="padding:10px; font-weight:700;">ชื่องานที่ถูกลบ</th>
+              <th style="padding:10px; font-weight:700;">ผู้ลบ</th>
+              <th style="padding:10px; font-weight:700;">วันที่ลบ</th>
+              <th style="padding:10px; font-weight:700; text-align:center;">การจัดการ</th>
+            </tr>
+          </thead>
+          <tbody id="recycleBinTableBody">
+            <tr>
+              <td colspan="4" style="padding:15px; text-align:center; color:var(--text-muted);">ไม่มีงานที่ถูกลบในระบบ</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
     <div class="card">
       <h3 style="font-size:15px; font-weight:700; margin-bottom:15px"><i class="fa-solid fa-eye"></i> สิทธิ์ความเป็นส่วนตัวและการมองเห็นงาน</h3>
       <select id="visibilitySelect" style="width:100%; max-width:400px; padding:10px; border-radius:8px; border:1px solid var(--border-color)">
@@ -751,6 +788,11 @@
         </label>
         <div id="taskLinksContainer"></div>
       </div>
+      <div class="form-row" style="margin-top: 10px;">
+        <label style="display:inline-flex; align-items:center; gap:8px; cursor:pointer; user-select:none; font-size:13.5px; font-weight:700; color:#b91c1c;">
+          <input type="checkbox" id="taskLockedToggle" style="width:18px; height:18px; accent-color:#b91c1c;"> 🔒 ล็อกงานย่อยนี้ (ห้ามคนอื่นหรือหัวหน้าแก้ไข/ลบ)
+        </label>
+      </div>
       <div class="modal-btns">
         <button type="button" class="btn btn-ghost" onclick="closeAddTaskModal()">ยกเลิก</button>
         <button type="submit" class="btn btn-primary" id="taskSubmitBtnText">เพิ่มงาน</button>
@@ -855,8 +897,12 @@
       </div>
     </div>
 
-    <div class="modal-btns" style="margin-top:20px; border-top:1px solid var(--border-color); padding-top:12px">
-      <button class="btn btn-ghost" onclick="closeTaskDetailsModal()">ปิดหน้าต่าง</button>
+    <div class="modal-btns" style="margin-top:20px; border-top:1px solid var(--border-color); padding-top:12px; display:flex; justify-content:space-between; align-items:center; width:100%; flex-wrap:wrap; gap:8px;">
+      <div id="detTaskLockWarningBox" style="display:none; align-items:center; gap:8px; font-size:12.5px; color:#b91c1c; font-weight:700;">
+        <span>🔒 งานนี้ถูกล็อกป้องกันการลบ/แก้ไข</span>
+        <button type="button" class="btn btn-ghost" id="detTaskUnlockBtn" onclick="unlockTaskDirect()" style="padding:4px 10px; font-size:11px; color:#b91c1c; border:1px solid #fca5a5; background:#fef2f2;"><i class="fa-solid fa-lock-open"></i> ปลดล็อก</button>
+      </div>
+      <button class="btn btn-ghost" onclick="closeTaskDetailsModal()" style="margin-left:auto;">ปิดหน้าต่าง</button>
     </div>
   </div>
 </div>
@@ -929,6 +975,6 @@
 </div>
 
 <!-- Firebase scripts -->
-<script type="module" src="app.js?v=4.5"></script>
+<script type="module" src="app.js?v=4.6"></script>
 </body>
 </html>
