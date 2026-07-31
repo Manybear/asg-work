@@ -46,6 +46,14 @@
     <button class="nav-btn" data-page="team" onclick="showPage('team')">รายชื่อทีม</button>
     <button class="nav-btn" data-page="settings" onclick="showPage('settings')">ตั้งค่า</button>
     <div class="spacer"></div>
+    <!-- Global Search Wrapper -->
+    <div class="global-search-container" style="position: relative; margin-right: 12px; min-width: 220px; display: flex; align-items: center;">
+      <input type="text" id="globalSearchInput" placeholder="🔍 ค้นหาเร็วข้ามหน้า..." style="width: 100%; padding: 6px 12px 6px 28px; border-radius: 20px; border: 1px solid var(--border-color); font-size: 13px; outline: none; background: #fff; color: var(--text-dark); transition: all 0.3s ease;">
+      <!-- Clear search button -->
+      <span id="globalSearchClear" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); cursor: pointer; color: var(--text-muted); display: none; font-weight: bold; font-size: 14px;">&times;</span>
+      <!-- Dropdown Results -->
+      <div id="globalSearchResults" style="display: none; position: absolute; top: calc(100% + 8px); right: 0; width: 340px; background: #fff; border: 1px solid var(--border-color); border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.15); z-index: 1000; max-height: 400px; overflow-y: auto; padding: 6px 0;"></div>
+    </div>
     <button class="bell" id="bellBtn">🔔<span id="notifCount">0</span></button>
     <span id="meLabel" style="font-size:13px; font-weight: 600; margin: 0 10px; color: var(--text-dark)"></span>
     <button class="nav-btn" id="logoutBtn" style="color: var(--urgent-color)"><i class="fa-solid fa-right-from-bracket"></i></button>
@@ -160,6 +168,22 @@
 
   <!-- 3. TASKS PAGE -->
   <div class="page" id="page-tasks">
+    <!-- Print Only Header -->
+    <div class="print-header" style="display: none; border-bottom: 2px solid #334155; padding-bottom: 12px; margin-bottom: 20px;">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <img src="asg_logo.png" alt="ASG Logo" style="height: 40px; width: auto;">
+          <div>
+            <h3 style="font-size: 14px; font-weight: 800; margin: 0; color: #0f172a;">บริษัท แอดวานซ์ บิสซิเนส แมกกาซีน จำกัด</h3>
+            <p style="font-size: 10px; margin: 2px 0 0 0; color: #475569;">427/55 ถนนลาดพร้าว แขวงจอมพล เขตจตุจักร กรุงเทพฯ 10900</p>
+          </div>
+        </div>
+        <div style="text-align: right;">
+          <h4 class="print-title" style="font-size: 15px; font-weight: 800; margin: 0; color: #0f172a;">รายงานข้อมูลระบบ</h4>
+          <p style="font-size: 9px; margin: 2px 0 0 0; color: #475569;">พิมพ์โดย: <span class="print-by"></span> | วันที่: <span class="print-time"></span></p>
+        </div>
+      </div>
+    </div>
     <h2 class="sec">รายการงานขององค์กร
       <span class="toolbar">
         <button type="button" onclick="openAddTaskModal()"><i class="fa-solid fa-plus"></i> เพิ่มงาน</button>
@@ -168,8 +192,12 @@
     </h2>
 
     <!-- Quick Filter Shortcuts -->
-    <div class="quick-filters-bar" style="display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap;">
-      <button class="btn btn-sm btn-ghost active-quick-filter" id="qfAll" onclick="applyQuickFilter('all')" style="border-radius:20px; font-size:12.5px; padding:6px 14px; display:inline-flex; align-items:center; gap:5px;"><i class="fa-solid fa-list"></i> งานทั้งหมด</button>
+    <div class="quick-filters-bar" style="display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap; align-items:center;">
+      <button class="btn btn-sm btn-ghost active-quick-filter" id="qfAll" onclick="applyQuickFilter('all')" style="border-radius:20px; font-size:12.5px; padding:6px 14px; display:inline-flex; align-items:center; gap:5px;"><i class="fa-solid fa-list"></i> ทั้งหมด</button>
+      <button class="btn btn-sm btn-ghost" id="qfNotyet" onclick="applyQuickFilter('notyet')" style="border-radius:20px; font-size:12.5px; padding:6px 14px; display:inline-flex; align-items:center; gap:5px;"><i class="fa-solid fa-circle-question"></i> ยังไม่เริ่ม</button>
+      <button class="btn btn-sm btn-ghost" id="qfInprog" onclick="applyQuickFilter('inprog')" style="border-radius:20px; font-size:12.5px; padding:6px 14px; display:inline-flex; align-items:center; gap:5px;"><i class="fa-solid fa-spinner"></i> กำลังทำ</button>
+      <button class="btn btn-sm btn-ghost" id="qfDone" onclick="applyQuickFilter('done')" style="border-radius:20px; font-size:12.5px; padding:6px 14px; display:inline-flex; align-items:center; gap:5px;"><i class="fa-solid fa-circle-check"></i> เสร็จแล้ว</button>
+      <span style="border-left: 1px solid var(--border-color); height: 18px; margin: 0 4px;"></span>
       <button class="btn btn-sm btn-ghost" id="qfMy" onclick="applyQuickFilter('my')" style="border-radius:20px; font-size:12.5px; padding:6px 14px; display:inline-flex; align-items:center; gap:5px;"><i class="fa-solid fa-user-check"></i> งานของฉัน</button>
       <button class="btn btn-sm btn-ghost" id="qfUrgent" onclick="applyQuickFilter('urgent')" style="border-radius:20px; font-size:12.5px; padding:6px 14px; color:var(--urgent-color); display:inline-flex; align-items:center; gap:5px;"><i class="fa-solid fa-circle-exclamation"></i> งานด่วนที่สุด</button>
       <button class="btn btn-sm btn-ghost" id="qfOverdue" onclick="applyQuickFilter('overdue')" style="border-radius:20px; font-size:12.5px; padding:6px 14px; color:var(--high-color); display:inline-flex; align-items:center; gap:5px;"><i class="fa-solid fa-clock"></i> งานเลยกำหนดส่ง</button>
@@ -227,6 +255,22 @@
 
   <!-- 5. CUSTOMERS PAGE -->
   <div class="page" id="page-customers">
+    <!-- Print Only Header -->
+    <div class="print-header" style="display: none; border-bottom: 2px solid #334155; padding-bottom: 12px; margin-bottom: 20px;">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <img src="asg_logo.png" alt="ASG Logo" style="height: 40px; width: auto;">
+          <div>
+            <h3 style="font-size: 14px; font-weight: 800; margin: 0; color: #0f172a;">บริษัท แอดวานซ์ บิสซิเนส แมกกาซีน จำกัด</h3>
+            <p style="font-size: 10px; margin: 2px 0 0 0; color: #475569;">427/55 ถนนลาดพร้าว แขวงจอมพล เขตจตุจักร กรุงเทพฯ 10900</p>
+          </div>
+        </div>
+        <div style="text-align: right;">
+          <h4 class="print-title" style="font-size: 15px; font-weight: 800; margin: 0; color: #0f172a;">รายงานข้อมูลระบบ</h4>
+          <p style="font-size: 9px; margin: 2px 0 0 0; color: #475569;">พิมพ์โดย: <span class="print-by"></span> | วันที่: <span class="print-time"></span></p>
+        </div>
+      </div>
+    </div>
     <h2 class="sec">ลูกค้า & สัญญาบริการ (Contracts)
       <span class="toolbar">
         <button type="button" onclick="exportCSVGeneric('customers')"><i class="fa-solid fa-file-csv"></i> Export CSV</button>
@@ -344,10 +388,16 @@
         <!-- Totals calculations -->
         <div class="form-row" style="display:flex; flex-direction:column; align-items:flex-end; gap:6px; border-top:1px solid var(--border-color); padding-top:15px; margin-top: 10px;">
           <div style="font-size:13px; color:var(--text-muted)">รวมเป็นเงิน (Subtotal): <strong id="qtSubtotalDisplay" style="color:var(--text-dark)">฿0.00</strong></div>
-          <label style="display:inline-flex; align-items:center; gap:6px; font-size:13px; cursor:pointer; user-select:none;">
-            <input type="checkbox" id="qtVatCheckbox" checked onchange="calculateQuotationTotals()" style="width:16px; height:16px; accent-color:var(--primary-red)"> คิดภาษีมูลค่าเพิ่ม (VAT 7%)
-          </label>
+          <div style="display:flex; flex-direction:column; gap:4px; align-items:flex-end;">
+            <label style="display:inline-flex; align-items:center; gap:6px; font-size:13px; cursor:pointer; user-select:none;">
+              <input type="checkbox" id="qtVatCheckbox" checked onchange="calculateQuotationTotals()" style="width:16px; height:16px; accent-color:var(--primary-red)"> คิดภาษีมูลค่าเพิ่ม (VAT 7%)
+            </label>
+            <label style="display:inline-flex; align-items:center; gap:6px; font-size:13px; cursor:pointer; user-select:none;">
+              <input type="checkbox" id="qtWhtCheckbox" onchange="calculateQuotationTotals()" style="width:16px; height:16px; accent-color:var(--primary-red)"> หักภาษี ณ ที่จ่าย (3%)
+            </label>
+          </div>
           <div style="font-size:13px; color:var(--text-muted)" id="qtVatRow">ภาษีมูลค่าเพิ่ม 7%: <strong id="qtVatDisplay" style="color:var(--text-dark)">฿0.00</strong></div>
+          <div style="font-size:13px; color:var(--text-muted); display:none;" id="qtWhtRow">หัก ณ ที่จ่าย 3%: <strong id="qtWhtDisplay" style="color:var(--text-dark)">-฿0.00</strong></div>
           <div style="font-size:16px; font-weight:800;">ยอดเงินรวมสุทธิ (Grand Total): <span id="qtTotalDisplay" style="color:var(--primary-red)">฿0.00</span></div>
         </div>
         
@@ -369,6 +419,22 @@
 
   <!-- 7. DAILY STANDUP PAGE -->
   <div class="page" id="page-updates">
+    <!-- Print Only Header -->
+    <div class="print-header" style="display: none; border-bottom: 2px solid #334155; padding-bottom: 12px; margin-bottom: 20px;">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <img src="asg_logo.png" alt="ASG Logo" style="height: 40px; width: auto;">
+          <div>
+            <h3 style="font-size: 14px; font-weight: 800; margin: 0; color: #0f172a;">บริษัท แอดวานซ์ บิสซิเนส แมกกาซีน จำกัด</h3>
+            <p style="font-size: 10px; margin: 2px 0 0 0; color: #475569;">427/55 ถนนลาดพร้าว แขวงจอมพล เขตจตุจักร กรุงเทพฯ 10900</p>
+          </div>
+        </div>
+        <div style="text-align: right;">
+          <h4 class="print-title" style="font-size: 15px; font-weight: 800; margin: 0; color: #0f172a;">รายงานข้อมูลระบบ</h4>
+          <p style="font-size: 9px; margin: 2px 0 0 0; color: #475569;">พิมพ์โดย: <span class="print-by"></span> | วันที่: <span class="print-time"></span></p>
+        </div>
+      </div>
+    </div>
     <h2 class="sec">ประวัติการทำงาน & กิจกรรมในระบบ (History Feed)
       <span class="toolbar" style="gap: 8px; flex-wrap: wrap;">
         <span style="font-size: 13px; font-weight: normal; display: inline-flex; align-items: center; gap: 6px; color: var(--text-muted); margin-right: 8px;">
@@ -460,6 +526,26 @@
       </div>
     </div>
 
+    <!-- Company Settings (Admin only) -->
+    <div class="card" id="companySettingsPanel" style="display:none;">
+      <h3 style="font-size:15px; font-weight:700; margin-bottom:15px; color: var(--primary-red)"><i class="fa-solid fa-building"></i> ข้อมูลบริษัท (สำหรับหัวหน้างานเท่านั้น)</h3>
+      <form id="companySettingsForm">
+        <div class="form-row">
+          <label>ชื่อบริษัท / ผู้ออกเอกสาร *</label>
+          <input id="setCompanyName" placeholder="ระบุชื่อบริษัทเต็ม" required style="width: 100%;">
+        </div>
+        <div class="form-row">
+          <label>ที่อยู่ออกเอกสาร *</label>
+          <input id="setCompanyAddress" placeholder="ระบุที่อยู่เต็มสำหรับใบเสร็จ/ใบเสนอราคา" required style="width: 100%;">
+        </div>
+        <div class="form-row" style="max-width: 300px;">
+          <label>เลขประจำตัวผู้เสียภาษี (Tax ID)</label>
+          <input id="setCompanyTaxId" placeholder="เลขประจำตัวผู้เสียภาษี 13 หลัก" style="width: 100%;">
+        </div>
+        <button type="submit" class="btn btn-primary" style="margin-top: 10px;"><i class="fa-solid fa-floppy-disk"></i> บันทึกข้อมูลบริษัท</button>
+      </form>
+    </div>
+
     <div class="card">
       <h3 style="font-size:15px; font-weight:700; margin-bottom:15px"><i class="fa-solid fa-eye"></i> สิทธิ์ความเป็นส่วนตัวและการมองเห็นงาน</h3>
       <select id="visibilitySelect" style="width:100%; max-width:400px; padding:10px; border-radius:8px; border:1px solid var(--border-color)">
@@ -526,15 +612,21 @@
       <div class="form-2col">
         <div class="form-row">
           <label>หมวดหมู่การบริการ *</label>
-          <select id="taskCategorySelect" required>
-            <option value="">-- เลือกหมวดหมู่ --</option>
-          </select>
+          <div style="display: flex; gap: 6px;">
+            <select id="taskCategorySelect" required style="flex: 1;">
+              <option value="">-- เลือกหมวดหมู่ --</option>
+            </select>
+            <button type="button" onclick="addNewCategoryPrompt()" style="padding: 0 12px; height: 42px; border-radius: 8px; font-size: 14px; background: #e2e8f0; color: #475569; border: 1px solid var(--border-color);" title="เพิ่มหมวดหมู่ใหม่"><i class="fa-solid fa-plus"></i></button>
+          </div>
         </div>
         <div class="form-row">
           <label>ผู้สั่งงาน *</label>
-          <select id="taskAssignerSelect" required>
-            <option value="">-- เลือกผู้สั่งงาน --</option>
-          </select>
+          <div style="display: flex; gap: 6px;">
+            <select id="taskAssignerSelect" required style="flex: 1;">
+              <option value="">-- เลือกผู้สั่งงาน --</option>
+            </select>
+            <button type="button" onclick="addNewAssignerPrompt()" style="padding: 0 12px; height: 42px; border-radius: 8px; font-size: 14px; background: #e2e8f0; color: #475569; border: 1px solid var(--border-color);" title="เพิ่มผู้สั่งงานใหม่"><i class="fa-solid fa-plus"></i></button>
+          </div>
         </div>
       </div>
       <div class="form-2col">
@@ -548,8 +640,8 @@
           </select>
         </div>
         <div class="form-row">
-          <label>กำหนดส่งงาน (Due Date) *</label>
-          <input type="date" id="taskDueInput" required>
+          <label>กำหนดส่งงาน (Due Date)</label>
+          <input type="date" id="taskDueInput" style="background: #fff; color: var(--text-dark);">
         </div>
       </div>
       <div class="form-row">
