@@ -147,6 +147,26 @@ async function logActivity(text) {
   }
 }
 
+window.sendLineNotify = async function(msg) {
+  if (!settings.lineNotifyUrl || !settings.lineNotifyToken || !settings.lineGroupId) return;
+  try {
+    await fetch(settings.lineNotifyUrl, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: new URLSearchParams({
+        token: settings.lineNotifyToken,
+        groupId: settings.lineGroupId,
+        message: msg
+      })
+    });
+  } catch (err) {
+    console.warn("LINE Official Account push notification failed:", err);
+  }
+};
+
 window.setAppTheme = function(color) {
   localStorage.setItem('asg_theme_color', color);
   applyThemeColor(color);
@@ -292,6 +312,20 @@ async function loadSettings() {
     if (companyAddressInput) companyAddressInput.value = settings.companyAddress || '427/55 ถนนลาดพร้าว แขวงจอมพล เขตจตุจักร กรุงเทพฯ 10900';
     const companyTaxIdInput = document.getElementById('setCompanyTaxId');
     if (companyTaxIdInput) companyTaxIdInput.value = settings.companyTaxId || '';
+    
+    // LINE Notify settings
+    const tokenInput = document.getElementById('setLineNotifyToken');
+    if (tokenInput) tokenInput.value = settings.lineNotifyToken || '';
+    const groupIdInput = document.getElementById('setLineGroupId');
+    if (groupIdInput) groupIdInput.value = settings.lineGroupId || '';
+    const urlInput = document.getElementById('setLineNotifyUrl');
+    if (urlInput) urlInput.value = settings.lineNotifyUrl || '';
+    const onNewTaskCb = document.getElementById('setLineNotifyOnNewTask');
+    if (onNewTaskCb) onNewTaskCb.checked = !!settings.lineNotifyOnNewTask;
+    const onQuotApprovedCb = document.getElementById('setLineNotifyOnQuotApproved');
+    if (onQuotApprovedCb) onQuotApprovedCb.checked = !!settings.lineNotifyOnQuotApproved;
+    const onContractExpiringCb = document.getElementById('setLineNotifyOnContractExpiring');
+    if (onContractExpiringCb) onContractExpiringCb.checked = !!settings.lineNotifyOnContractExpiring;
   } else {
     await setDoc(ref, settings);
   }
@@ -379,9 +413,16 @@ if (companyForm) {
     settings.companyAddress = document.getElementById('setCompanyAddress').value.trim();
     settings.companyTaxId = document.getElementById('setCompanyTaxId').value.trim();
     
+    settings.lineNotifyToken = document.getElementById('setLineNotifyToken').value.trim();
+    settings.lineNotifyUrl = document.getElementById('setLineNotifyUrl').value.trim();
+    settings.lineGroupId = document.getElementById('setLineGroupId').value.trim();
+    settings.lineNotifyOnNewTask = document.getElementById('setLineNotifyOnNewTask').checked;
+    settings.lineNotifyOnQuotApproved = document.getElementById('setLineNotifyOnQuotApproved').checked;
+    settings.lineNotifyOnContractExpiring = document.getElementById('setLineNotifyOnContractExpiring').checked;
+    
     try {
       await setDoc(doc(db, 'settings', 'global'), settings);
-      showToast('บันทึกข้อมูลบริษัทสำเร็จ', 'success');
+      showToast('บันทึกข้อมูลระบบเรียบร้อย', 'success');
     } catch (err) {
       alert('เกิดข้อผิดพลาดในการบันทึกข้อมูล: ' + err.message);
     }
@@ -912,6 +953,25 @@ document.getElementById('taskFormSubmit').addEventListener('submit', async (e) =
       };
       await addDoc(collection(db, 'tasks'), newTask);
       await logActivity(`สร้างงานใหม่ "${data.title}"`);
+      
+      if (settings.lineNotifyOnNewTask) {
+        const proj = projectsCache.find(x => x.id === data.projectId);
+        const projName = proj ? proj.name : 'ทั่วไป';
+        const assignedNames = assignees.map(uid => {
+          const u = usersCache.find(x => x.uid === uid);
+          return u ? u.name : 'ไม่ระบุ';
+        }).join(', ');
+        const priorityText = data.priority === 'urgent' ? '🚨 ด่วนที่สุด' : data.priority === 'high' ? '🔴 ด่วน' : data.priority === 'mid' ? '🟡 ปานกลาง' : '🟢 ทั่วไป';
+        
+        const lineMsg = `📝 มีการมอบหมายงานใหม่!\n` +
+                        `📌 ชื่องาน: ${data.title}\n` +
+                        `📁 โปรเจกต์: ${projName}\n` +
+                        `👤 ผู้รับผิดชอบ: ${assignedNames}\n` +
+                        `📅 กำหนดส่ง: ${data.dueDate || '-'}\n` +
+                        `⚡ ความสำคัญ: ${priorityText}\n` +
+                        `🔗 เข้าดูระบบ: https://manybear.github.io/asg-work/`;
+        sendLineNotify(lineMsg);
+      }
     }
     closeAddTaskModal();
     showToast(editingTaskId ? 'แก้ไขงานสำเร็จ' : 'สร้างงานสำเร็จ', 'success');
@@ -1003,6 +1063,25 @@ window.unlockTaskDirect = async function() {
   }
 };
 
+window.lockTaskDirect = async function() {
+  if (!activeDetailsTaskId) return;
+  const t = tasksCache.find(x => x.id === activeDetailsTaskId);
+  if (!t) return;
+  
+  if (t.createdBy !== profile.uid && profile.role !== 'admin') {
+    alert('🔒 คุณไม่มีสิทธิ์ล็อกงานชิ้นนี้');
+    return;
+  }
+  
+  try {
+    await updateDoc(doc(db, 'tasks', activeDetailsTaskId), { isLocked: true });
+    await logActivity(`🔒 ล็อกงาน "${t.title}"`);
+    showToast('ล็อกงานสำเร็จ', 'success');
+  } catch (err) {
+    alert('เกิดข้อผิดพลาดในการล็อกงาน: ' + err.message);
+  }
+};
+
 // ---------- INTERACTIVE TASK DETAILS MODAL ----------
 
 window.openTaskDetailsModal = function(taskId) {
@@ -1022,14 +1101,17 @@ window.closeTaskDetailsModal = function() {
 function renderTaskDetailsModalContent(t) {
   document.getElementById('detTaskTitle').textContent = t.title || '';
   
-  // Lock Warning Box handling
+  // Lock Warning Box and Button handling
   const warningBox = document.getElementById('detTaskLockWarningBox');
   const unlockBtn = document.getElementById('detTaskUnlockBtn');
+  const lockBtn = document.getElementById('detTaskLockBtn');
+  const isOwnerOrAdmin = t.createdBy === profile.uid || profile.role === 'admin';
+  
   if (warningBox) {
     if (t.isLocked) {
       warningBox.style.display = 'flex';
       if (unlockBtn) {
-        if (t.createdBy === profile.uid || profile.role === 'admin') {
+        if (isOwnerOrAdmin) {
           unlockBtn.style.display = 'inline-block';
         } else {
           unlockBtn.style.display = 'none';
@@ -1037,6 +1119,14 @@ function renderTaskDetailsModalContent(t) {
       }
     } else {
       warningBox.style.display = 'none';
+    }
+  }
+  
+  if (lockBtn) {
+    if (!t.isLocked && isOwnerOrAdmin) {
+      lockBtn.style.display = 'inline-block';
+    } else {
+      lockBtn.style.display = 'none';
     }
   }
 
@@ -2031,7 +2121,8 @@ document.getElementById('customerForm').addEventListener('submit', async (e) => 
     contractEndDate: document.getElementById('custEndDate').value,
     reminderDays: parseInt(document.getElementById('custReminderDays').value || '15', 10),
     address: document.getElementById('custAddress').value.trim(),
-    note: document.getElementById('custNote').value.trim()
+    note: document.getElementById('custNote').value.trim(),
+    paymentSlipLink: document.getElementById('custPaymentLink').value.trim()
   };
   
   try {
@@ -2064,6 +2155,8 @@ window.openRenewalModal = function(id) {
   if (dateEl) dateEl.value = '';
   const noteEl = document.getElementById('renewNote');
   if (noteEl) noteEl.value = '';
+  const payEl = document.getElementById('renewPaymentLink');
+  if (payEl) payEl.value = '';
   
   // Populate current contract reference box
   const infoBox = document.getElementById('renewCurrentInfoBox');
@@ -2146,6 +2239,9 @@ if (renewalForm) {
     const noteInput = document.getElementById('renewNote');
     const newNote = noteInput ? noteInput.value.trim() : '';
     
+    const payInput = document.getElementById('renewPaymentLink');
+    const newPaymentLink = payInput ? payInput.value.trim() : '';
+    
     let linkedQuotationId = '';
     let linkedQuotationCode = '';
     if (quotVal) {
@@ -2160,6 +2256,7 @@ if (renewalForm) {
       note: c.note || '',
       quotationId: c.linkedQuotationId || '',
       quotationCode: c.linkedQuotationCode || '',
+      paymentSlipLink: c.paymentSlipLink || '',
       renewedAt: new Date().toISOString()
     };
     
@@ -2171,6 +2268,7 @@ if (renewalForm) {
       note: newNote,
       linkedQuotationId,
       linkedQuotationCode,
+      paymentSlipLink: newPaymentLink,
       contractHistory
     };
     
@@ -2196,6 +2294,7 @@ window.editCustomer = (id) => {
   document.getElementById('custReminderDays').value = c.reminderDays || 15;
   document.getElementById('custAddress').value = c.address || '';
   document.getElementById('custNote').value = c.note || '';
+  document.getElementById('custPaymentLink').value = c.paymentSlipLink || '';
   document.getElementById('custSubmitBtn').innerHTML = '<i class="fa-solid fa-check"></i> บันทึกการแก้ไข';
   document.getElementById('custCancelBtn').style.display = 'inline-block';
   document.getElementById('customerForm').classList.add('editing');
@@ -2306,6 +2405,7 @@ function renderCustomers(customers) {
     }
     
     const linkedQuotHtml = c.linkedQuotationCode ? `<div style="font-size:12px; color:#2563eb; margin-top:2px;"><strong><i class="fa-solid fa-link"></i> ผูกใบเสนอราคา:</strong> ${c.linkedQuotationCode}</div>` : '';
+    const paymentLinkHtml = c.paymentSlipLink ? `<div style="font-size:12px; color:#16a34a; margin-top:2px;"><strong><i class="fa-solid fa-receipt"></i> ลิงก์สลิปโอนเงิน:</strong> <a href="${c.paymentSlipLink}" target="_blank" style="color:#2563eb; text-decoration:underline; font-weight:600;">เปิดดูสลิป <i class="fa-solid fa-up-right-from-square" style="font-size:9.5px;"></i></a></div>` : '';
     
     let historyHtml = '';
     if (c.contractHistory && c.contractHistory.length > 0) {
@@ -2319,7 +2419,8 @@ function renderCustomers(customers) {
               const histYear = histParts[0] ? parseInt(histParts[0], 10) + 543 : '';
               const histDateStr = histParts[0] ? `${histParts[2]}/${histParts[1]}/${histYear}` : '-';
               const quotLabel = h.quotationCode ? ` (ใบเสนอราคา: ${h.quotationCode})` : '';
-              return `<div style="font-size:11px; color:var(--text-muted);">• หมดอายุ: ${histDateStr}${quotLabel} ${h.note ? ` | ${h.note}` : ''}</div>`;
+              const payLabel = h.paymentSlipLink ? ` | <a href="${h.paymentSlipLink}" target="_blank" style="color:#2563eb; text-decoration:underline;">เปิดดูสลิป <i class="fa-solid fa-up-right-from-square" style="font-size:9px;"></i></a>` : '';
+              return `<div style="font-size:11px; color:var(--text-muted);">• หมดอายุ: ${histDateStr}${quotLabel} ${h.note ? ` | ${h.note}` : ''}${payLabel}</div>`;
             }).join('')}
           </div>
         </div>
@@ -2408,6 +2509,7 @@ function renderCustomers(customers) {
         </div>
         <div class="ts"><i class="fa-regular fa-calendar-check"></i> ครบกำหนดสัญญา: ${c.contractEndDate || '-'}</div>
         ${linkedQuotHtml}
+        ${paymentLinkHtml}
         <div style="font-size:12.5px; color:var(--text-muted); margin-top:2px;">
           ${c.taxId ? `<div><strong>Tax ID:</strong> ${c.taxId}</div>` : ''}
           ${c.phone ? `<div><strong>ติดต่อ:</strong> ${c.phone}</div>` : ''}
@@ -2452,6 +2554,8 @@ window.openCreateQuotationForm = function() {
   if (compNameInput) compNameInput.value = settings.companyName || 'บริษัท แอดวานซ์ บิสซิเนส แมกกาซีน จำกัด';
   const compAddrInput = document.getElementById('qtCompanyAddress');
   if (compAddrInput) compAddrInput.value = settings.companyAddress || '427/55 ถนนลาดพร้าว แขวงจอมพล เขตจตุจักร กรุงเทพฯ 10900';
+  const preparedByInput = document.getElementById('qtPreparedBy');
+  if (preparedByInput) preparedByInput.value = profile.name || '';
   
   const whtBox = document.getElementById('qtWhtCheckbox');
   if (whtBox) whtBox.checked = false;
@@ -2594,6 +2698,7 @@ document.getElementById('quotationForm').addEventListener('submit', async (e) =>
     customerName,
     companyName,
     companyAddress,
+    preparedBy: document.getElementById('qtPreparedBy').value.trim(),
     items,
     subtotal,
     vat,
@@ -2615,6 +2720,16 @@ document.getElementById('quotationForm').addEventListener('submit', async (e) =>
     } else {
       await logActivity(`💰 ออกใบเสนอราคาใหม่ หมายเลข "${code}" สำหรับลูกค้า "${customerName}"`);
     }
+    
+    if (status === 'approved' && settings.lineNotifyOnQuotApproved) {
+      const lineMsg = `💰 ใบเสนอราคาได้รับการอนุมัติแล้ว!\n` +
+                      `📄 เลขที่เอกสาร: ${code}\n` +
+                      `👤 ลูกค้า: ${customerName}\n` +
+                      `💵 ยอดเงินรวมสุทธิ: ฿${formatMoney(total)} บาท\n` +
+                      `🔗 ลิงก์ระบบ: https://manybear.github.io/asg-work/`;
+      sendLineNotify(lineMsg);
+    }
+    
     closeQuotationFormPanel();
     showToast(editingQuotationId ? 'แก้ไขใบเสนอราคาสำเร็จ' : 'ออกใบเสนอราคาสำเร็จ', 'success');
   } catch (err) {
@@ -2645,6 +2760,13 @@ window.editQuotation = function(qId) {
   
   document.getElementById('qtCompanyName').value = q.companyName || 'บริษัท แอดวานซ์ บิสซิเนส แมกกาซีน จำกัด';
   document.getElementById('qtCompanyAddress').value = q.companyAddress || '';
+  
+  const prepInput = document.getElementById('qtPreparedBy');
+  if (prepInput) {
+    const creatorObj = usersCache.find(x => x.uid === q.createdBy);
+    prepInput.value = q.preparedBy || (creatorObj ? creatorObj.name : '');
+  }
+  
   document.getElementById('qtNotes').value = q.notes || '';
   document.getElementById('qtVatCheckbox').checked = q.vat > 0;
   document.getElementById('qtWhtCheckbox').checked = q.wht > 0;
@@ -2793,33 +2915,33 @@ window.printQuotationDocument = function(qId) {
   const cust = customersCache.find(x => x.id === q.customerId);
   const paper = document.getElementById('quotationPaper');
   
-  // Find original creator name from cache
+  // Find original creator name from cache, fallback to preparedBy field
   const creatorObj = usersCache.find(x => x.uid === q.createdBy);
-  const creatorName = creatorObj ? creatorObj.name : 'ผู้ดูแลระบบ';
+  const creatorName = q.preparedBy || (creatorObj ? creatorObj.name : 'ผู้ดูแลระบบ');
   
   const itemsHtml = q.items.map((it, idx) => `
-    <tr>
-      <td style="text-align:center; border:1px solid #cbd5e1; padding:8px;">${idx + 1}</td>
-      <td style="border:1px solid #cbd5e1; padding:8px;"><strong>${escapeHtml(it.desc)}</strong></td>
-      <td style="text-align:center; border:1px solid #cbd5e1; padding:8px;">${formatMoney(it.qty)}</td>
-      <td style="text-align:right; border:1px solid #cbd5e1; padding:8px;">฿${formatMoney(it.price)}</td>
-      <td style="text-align:right; border:1px solid #cbd5e1; padding:8px;">฿${formatMoney(it.qty * it.price)}</td>
+    <tr style="page-break-inside: avoid; break-inside: avoid;">
+      <td style="text-align:center;">${idx + 1}</td>
+      <td style="text-align:left;"><strong>${escapeHtml(it.desc).replace(/\n/g, '<br>')}</strong></td>
+      <td style="text-align:center;">${formatMoney(it.qty)}</td>
+      <td style="text-align:right;">฿${formatMoney(it.price)}</td>
+      <td style="text-align:right;">฿${formatMoney(it.qty * it.price)}</td>
     </tr>
   `).join('');
   
   const vatSection = q.vat > 0 ? `
-    <tr>
+    <tr style="page-break-inside: avoid; break-inside: avoid;">
       <td colspan="3" style="border:none;"></td>
-      <td style="text-align:right; font-weight:700; background:#f9fafb; border:1px solid #cbd5e1; padding:8px;">ภาษีมูลค่าเพิ่ม (VAT 7%):</td>
-      <td style="text-align:right; font-weight:700; background:#f9fafb; border:1px solid #cbd5e1; padding:8px;">฿${formatMoney(q.vat)}</td>
+      <td style="text-align:right; font-weight:700; background:#f9fafb;">ภาษีมูลค่าเพิ่ม (VAT 7%):</td>
+      <td style="text-align:right; font-weight:700; background:#f9fafb;">฿${formatMoney(q.vat)}</td>
     </tr>
   ` : '';
   
   const whtSection = q.wht > 0 ? `
-    <tr>
+    <tr style="page-break-inside: avoid; break-inside: avoid;">
       <td colspan="3" style="border:none;"></td>
-      <td style="text-align:right; font-weight:700; background:#f9fafb; border:1px solid #cbd5e1; padding:8px;">หักภาษี ณ ที่จ่าย (3%):</td>
-      <td style="text-align:right; font-weight:700; background:#f9fafb; border:1px solid #cbd5e1; padding:8px;">-฿${formatMoney(q.wht)}</td>
+      <td style="text-align:right; font-weight:700; background:#f9fafb;">หักภาษี ณ ที่จ่าย (3%):</td>
+      <td style="text-align:right; font-weight:700; background:#f9fafb;">-฿${formatMoney(q.wht)}</td>
     </tr>
   ` : '';
   
@@ -2828,27 +2950,88 @@ window.printQuotationDocument = function(qId) {
   const custAddressLine = cust && cust.address ? `<br><strong>ที่อยู่:</strong> ${escapeHtml(cust.address).replace(/\n/g, '<br>')}` : '';
   
   paper.innerHTML = `
-    <div style="display:flex; justify-content:space-between; border-bottom:2px solid #0f172a; padding-bottom:12px; margin-bottom:20px;">
+    <style>
+      #quotationPaper {
+        font-family: 'Sarabun', 'Inter', sans-serif !important;
+        color: #0f172a !important;
+        line-height: 1.45 !important;
+        padding: 5px !important;
+      }
+      #quotationPaper h1, #quotationPaper h2, #quotationPaper h3 {
+        font-family: 'Sarabun', 'Inter', sans-serif !important;
+      }
+      #quotationPaper table {
+        width: 100% !important;
+        border-collapse: collapse !important;
+        margin-bottom: 12px !important;
+      }
+      #quotationPaper table th {
+        background: #f1f5f9 !important;
+        font-weight: 700 !important;
+        font-size: 11.5px !important;
+        padding: 7px 10px !important;
+        border: 1px solid #cbd5e1 !important;
+        color: #1e293b !important;
+      }
+      #quotationPaper table td {
+        font-size: 11.5px !important;
+        padding: 7px 10px !important;
+        border: 1px solid #cbd5e1 !important;
+        line-height: 1.45 !important;
+      }
+      #quotationPaper tr {
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+      }
+      .print-grid {
+        display: grid !important;
+        grid-template-columns: 1fr 1fr !important;
+        gap: 12px !important;
+        margin-bottom: 12px !important;
+      }
+      .print-box {
+        border: 1px solid #cbd5e1 !important;
+        padding: 10px !important;
+        border-radius: 6px !important;
+        background: #f8fafc !important;
+      }
+      .print-signatures {
+        display: flex !important;
+        justify-content: space-between !important;
+        margin-top: 25px !important;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+      }
+      .print-signatures > div {
+        width: 45% !important;
+        border-top: 1px dashed #94a3b8 !important;
+        padding-top: 6px !important;
+        font-size: 11px !important;
+        text-align: center !important;
+      }
+    </style>
+
+    <div style="display:flex; justify-content:space-between; border-bottom:2px solid #0f172a; padding-bottom:8px; margin-bottom:12px;">
       <div>
-        <h2 style="font-size:18px; font-weight:800; color:#0f172a;">${escapeHtml(q.companyName || 'บริษัท แอดวานซ์ บิสซิเนส แมกกาซีน จำกัด')}</h2>
-        <p style="font-size:11px; color:#475569; margin-top:2px;">${escapeHtml(q.companyAddress || '427/55 ถนนลาดพร้าว แขวงจอมพล เขตจตุจักร กรุงเทพฯ 10900')}</p>
+        <h2 style="font-size:16px; font-weight:800; color:#0f172a; margin:0;">${escapeHtml(q.companyName || 'บริษัท แอดวานซ์ บิสซิเนส แมกกาซีน จำกัด')}</h2>
+        <p style="font-size:10px; color:#475569; margin:2px 0 0 0;">${escapeHtml(q.companyAddress || '427/55 ถนนลาดพร้าว แขวงจอมพล เขตจตุจักร กรุงเทพฯ 10900')}</p>
       </div>
       <div style="text-align:right;">
-        <h1 style="font-size:22px; font-weight:800; color:var(--primary-red); margin:0;">ใบเสนอราคา</h1>
-        <p style="font-size:13px; font-weight:700; color:#0f172a; margin-top:4px;">QUOTATION</p>
+        <h1 style="font-size:20px; font-weight:800; color:var(--primary-red); margin:0;">ใบเสนอราคา</h1>
+        <p style="font-size:12px; font-weight:700; color:#0f172a; margin:2px 0 0 0;">QUOTATION</p>
       </div>
     </div>
     
-    <div class="print-grid" style="margin-bottom:20px;">
-      <div class="print-box" style="border:1px solid #cbd5e1; padding:12px; border-radius:6px; background:#f8fafc;">
-        <div style="font-size:11px; font-weight:700; text-transform:uppercase; color:#475569; border-bottom:1px solid #e2e8f0; padding-bottom:4px; margin-bottom:8px;">👤 ข้อมูลลูกค้า / ผู้รับการเสนอราคา</div>
-        <div style="font-size:12px; line-height:1.6;">
+    <div class="print-grid">
+      <div class="print-box">
+        <div style="font-size:10px; font-weight:700; text-transform:uppercase; color:#475569; border-bottom:1px solid #e2e8f0; padding-bottom:4px; margin-bottom:6px;">👤 ข้อมูลลูกค้า / ผู้รับการเสนอราคา</div>
+        <div style="font-size:11px; line-height:1.5;">
           <strong>ลูกค้า/บริษัท:</strong> ${escapeHtml(q.customerName || (cust ? cust.name : '-'))}${custPhoneLine}${custTaxLine}${custAddressLine}
         </div>
       </div>
-      <div class="print-box" style="border:1px solid #cbd5e1; padding:12px; border-radius:6px; background:#f8fafc;">
-        <div style="font-size:11px; font-weight:700; text-transform:uppercase; color:#475569; border-bottom:1px solid #e2e8f0; padding-bottom:4px; margin-bottom:8px;">📄 ข้อมูลเอกสาร</div>
-        <div style="font-size:12px; line-height:1.6;">
+      <div class="print-box">
+        <div style="font-size:10px; font-weight:700; text-transform:uppercase; color:#475569; border-bottom:1px solid #e2e8f0; padding-bottom:4px; margin-bottom:6px;">📄 ข้อมูลเอกสาร</div>
+        <div style="font-size:11px; line-height:1.5;">
           <strong>เลขที่เอกสาร:</strong> <strong>${escapeHtml(q.code)}</strong><br>
           <strong>วันที่เอกสาร:</strong> ${escapeHtml(q.date)}<br>
           <strong>ผู้จัดทำ:</strong> ${escapeHtml(creatorName)}
@@ -2856,47 +3039,47 @@ window.printQuotationDocument = function(qId) {
       </div>
     </div>
     
-    <table class="print-table" style="width:100%; border-collapse:collapse; margin-bottom:20px;">
+    <table class="print-table">
       <thead>
-        <tr style="background:#f1f5f9;">
-          <th width="40" style="text-align:center; border:1px solid #cbd5e1; padding:8px; font-size:11px;">ลำดับ</th>
-          <th style="border:1px solid #cbd5e1; padding:8px; font-size:11px;">รายละเอียดสินค้า / การบริการ</th>
-          <th width="80" style="text-align:center; border:1px solid #cbd5e1; padding:8px; font-size:11px;">จำนวน</th>
-          <th width="120" style="text-align:right; border:1px solid #cbd5e1; padding:8px; font-size:11px;">ราคา/หน่วย</th>
-          <th width="120" style="text-align:right; border:1px solid #cbd5e1; padding:8px; font-size:11px;">จำนวนเงิน (บาท)</th>
+        <tr>
+          <th width="40" style="text-align:center;">ลำดับ</th>
+          <th>รายละเอียดสินค้า / การบริการ</th>
+          <th width="50" style="text-align:center;">จำนวน</th>
+          <th width="100" style="text-align:right;">ราคา/หน่วย</th>
+          <th width="110" style="text-align:right;">จำนวนเงิน (บาท)</th>
         </tr>
       </thead>
       <tbody>
         ${itemsHtml}
-        <tr>
+        <tr style="page-break-inside: avoid; break-inside: avoid;">
           <td colspan="3" style="border:none;"></td>
-          <td style="text-align:right; font-weight:700; background:#f9fafb; font-size:12px; border:1px solid #cbd5e1; padding:8px;">รวมราคาสุทธิ:</td>
-          <td style="text-align:right; font-weight:700; background:#f9fafb; font-size:12px; border:1px solid #cbd5e1; padding:8px;">฿${formatMoney(q.subtotal)}</td>
+          <td style="text-align:right; font-weight:700; background:#f9fafb;">รวมราคาสุทธิ:</td>
+          <td style="text-align:right; font-weight:700; background:#f9fafb;">฿${formatMoney(q.subtotal)}</td>
         </tr>
         ${vatSection}
         ${whtSection}
-        <tr style="background:#f1f5f9;">
+        <tr style="background:#f1f5f9; page-break-inside: avoid; break-inside: avoid;">
           <td colspan="3" style="border:none;"></td>
-          <td style="text-align:right; font-weight:800; font-size:13px; border:1px solid #cbd5e1; padding:8px; color:var(--primary-red);">ยอดเงินรวมสุทธิ:</td>
-          <td style="text-align:right; font-weight:800; font-size:13px; border:1px solid #cbd5e1; padding:8px; color:var(--primary-red);">฿${formatMoney(q.total)}</td>
+          <td style="text-align:right; font-weight:800; color:var(--primary-red);">ยอดเงินรวมสุทธิ:</td>
+          <td style="text-align:right; font-weight:800; color:var(--primary-red);">฿${formatMoney(q.total)}</td>
         </tr>
       </tbody>
     </table>
     
     ${q.notes ? `
-      <div style="font-size:11px; color:#475569; border:1px solid #e2e8f0; padding:10px; border-radius:6px; margin-bottom:30px; background:#f8fafc; line-height:1.5;">
+      <div style="font-size:10px; color:#475569; border:1px solid #e2e8f0; padding:8px; border-radius:6px; margin-bottom:15px; background:#f8fafc; line-height:1.45; page-break-inside: avoid; break-inside: avoid;">
         <strong>เงื่อนไข & หมายเหตุ:</strong><br>
         ${escapeHtml(q.notes).replace(/\n/g, '<br>')}
       </div>
     ` : ''}
     
-    <div style="display:flex; justify-content:space-between; margin-top:50px; text-align:center;">
-      <div style="width:45%; border-top:1px dashed #94a3b8; padding-top:8px; font-size:11px;">
+    <div class="print-signatures">
+      <div>
         <br><br>
         ลงชื่อ.........................................................<br>
         ( ผู้เสนอราคา / ผู้ส่งเอกสาร )
       </div>
-      <div style="width:45%; border-top:1px dashed #94a3b8; padding-top:8px; font-size:11px;">
+      <div>
         <br><br>
         ลงชื่อ.........................................................<br>
         ( ผู้อนุมัติสั่งซื้อ / ผู้รับการเสนอราคา )
@@ -2923,10 +3106,10 @@ window.downloadQuotationPDF = function() {
   
   const element = document.getElementById('quotationPaper');
   const opt = {
-    margin:       15,
+    margin:       12,
     filename:     `Quotation_${q.code || 'QT'}.pdf`,
     image:        { type: 'jpeg', quality: 0.98 },
-    html2canvas:  { scale: 2, useCORS: true, letterRendering: true },
+    html2canvas:  { scale: 2, useCORS: true },
     jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
   };
   
@@ -3925,6 +4108,21 @@ function checkContractReminders(customers) {
     text: `ลูกค้า "${c.name}" สัญญาเหลืออีก ${daysUntil(c.contractEndDate)} วัน`
   }));
   renderNotifBanner('contract', items);
+  
+  if (settings.lineNotifyOnContractExpiring && soon.length > 0 && profile && profile.role === 'admin') {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const lastWarned = localStorage.getItem('asg_last_contract_line_warned_date');
+    if (lastWarned !== todayStr) {
+      localStorage.setItem('asg_last_contract_line_warned_date', todayStr);
+      
+      const msgList = soon.map(c => `- ลูกค้า "${c.name}" เหลืออีก ${daysUntil(c.contractEndDate)} วัน (หมดสัญญา: ${c.contractEndDate})`).join('\n');
+      const lineMsg = `⏰ สัญญาบริการลูกค้าใกล้หมดอายุ!\n` +
+                      `โปรดติดต่อเพื่อต่อสัญญากับคู่ค้าหลักดังนี้ครับ:\n` +
+                      `${msgList}\n` +
+                      `🔗 ลิงก์ระบบ: https://manybear.github.io/asg-work/`;
+      sendLineNotify(lineMsg);
+    }
+  }
 }
 
 const notifState = { task: [], contract: [] };
