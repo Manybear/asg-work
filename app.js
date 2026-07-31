@@ -1620,8 +1620,58 @@ function renderCalendarSidebar() {
     });
   }
   
-  if (!hasAlerts) {
-    sidebar.innerHTML = `<p class="muted" style="font-size:12px; padding: 20px 0;">🎉 ไม่มีคิวสัญญาลูกค้าหมดอายุหรือความเร่งด่วนในขณะนี้</p>`;
+  // C. Active Tasks Section
+  let hasActiveSection = false;
+  let activeHtml = '';
+  
+  usersCache.forEach(u => {
+    // Find active tasks assigned to this user (excluding completed ones)
+    const userActiveTasks = tasksCache.filter(t => {
+      if (t.status === 'done') return false;
+      return (t.assignees && t.assignees.includes(u.uid)) || (t.assignee === u.uid);
+    });
+    
+    if (userActiveTasks.length > 0) {
+      hasActiveSection = true;
+      const uColor = getEmployeeColor(u.name);
+      activeHtml += `
+        <div style="margin-bottom:12px; border-bottom:1px dashed var(--border-color); padding-bottom:8px;">
+          <div style="display:flex; align-items:center; gap:6px; margin-bottom:6px;">
+            <span class="avatar-initial" style="background:${uColor.border}; width:16px; height:16px; font-size:9px; color:#fff;">${getEmployeeInitials(u.name)}</span>
+            <strong style="font-size:11.5px; color:${uColor.border};">${u.name}</strong>
+            <span style="font-size:10px; color:var(--text-muted); margin-left:auto;">(${userActiveTasks.length} งานกำลังทำ/ค้าง)</span>
+          </div>
+      `;
+      
+      userActiveTasks.forEach(t => {
+        const statusText = t.status === 'inprog' ? 'กำลังทำ' : 'ยังไม่เริ่ม';
+        const statusColor = t.status === 'inprog' ? '#2563eb' : '#64748b'; // Blue or Slate
+        const progressText = t.percent ? ` (${t.percent}%)` : '';
+        
+        activeHtml += `
+          <div class="sidebar-alert-item" style="padding:6px 10px; margin-bottom:4px; border-left: 3px solid ${statusColor}; background:#fff;" onclick="openTaskDetailsModal('${t.id}')">
+            <div style="flex:1; font-size:11px;">
+              <div style="font-weight:600; color:var(--text-dark);">${t.title}</div>
+              <div style="font-size:10.5px; color:${statusColor}; margin-top:2px;">
+                <i class="fa-regular fa-circle-dot"></i> ${statusText}${progressText}
+                ${t.dueDate ? ` | ส่ง: ${t.dueDate}` : ''}
+              </div>
+            </div>
+          </div>
+        `;
+      });
+      
+      activeHtml += `</div>`;
+    }
+  });
+
+  if (hasActiveSection) {
+    html += `<h4 style="font-size:12px; font-weight:700; color:var(--text-dark); margin-top:16px; margin-bottom:8px; display:flex; align-items:center; gap:4px; border-top:1px solid var(--border-color); padding-top:12px;"><i class="fa-solid fa-users-gear"></i> พนักงานกำลังทำอะไรอยู่ (Active Tasks)</h4>`;
+    html += activeHtml;
+  }
+  
+  if (!hasAlerts && !hasActiveSection) {
+    sidebar.innerHTML = `<p class="muted" style="font-size:12px; padding: 20px 0;">🎉 ไม่มีคิวสัญญาหมดอายุหรือความเร่งด่วนในขณะนี้</p>`;
   } else {
     sidebar.innerHTML = html;
   }
