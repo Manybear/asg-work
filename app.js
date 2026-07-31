@@ -1913,58 +1913,68 @@ window.openRenewalModal = function(id) {
 
 window.closeRenewalModal = function() {
   renewalCustomerId = null;
-  document.getElementById('renewalForm').reset();
-  document.getElementById('renewalModal').style.display = 'none';
+  const f = document.getElementById('renewalForm');
+  if (f) f.reset();
+  const m = document.getElementById('renewalModal');
+  if (m) m.style.display = 'none';
 };
 
-document.getElementById('renewalForm').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  if (!renewalCustomerId) return;
-  
-  const c = customersCache.find(x => x.id === renewalCustomerId);
-  if (!c) return;
-  
-  const newEndDate = document.getElementById('renewEndDate').value;
-  const quotVal = document.getElementById('renewQuotationSelect').value;
-  const newNote = document.getElementById('renewNote').value.trim();
-  
-  let linkedQuotationId = '';
-  let linkedQuotationCode = '';
-  if (quotVal) {
-    const parts = quotVal.split('|');
-    linkedQuotationId = parts[0];
-    linkedQuotationCode = parts[1];
-  }
-  
-  const historyItem = {
-    id: 'hist_' + Date.now(),
-    contractEndDate: c.contractEndDate || '',
-    note: c.note || '',
-    quotationId: c.linkedQuotationId || '',
-    quotationCode: c.linkedQuotationCode || '',
-    renewedAt: new Date().toISOString()
-  };
-  
-  const contractHistory = c.contractHistory || [];
-  contractHistory.push(historyItem);
-  
-  const updates = {
-    contractEndDate: newEndDate,
-    note: newNote,
-    linkedQuotationId,
-    linkedQuotationCode,
-    contractHistory
-  };
-  
-  try {
-    await updateDoc(doc(db, 'customers', renewalCustomerId), updates);
-    await logActivity(`👤 ต่ออายุสัญญาลูกค้า "${c.name}" รอบใหม่ถึงวันที่ ${newEndDate}`);
-    closeRenewalModal();
-    showToast('ต่ออายุสัญญาสำเร็จและบันทึกประวัติการต่อรอบเก่าเรียบร้อย', 'success');
-  } catch (err) {
-    alert('เกิดข้อผิดพลาดในการต่ออายุสัญญา: ' + err.message);
-  }
-});
+const renewalForm = document.getElementById('renewalForm');
+if (renewalForm) {
+  renewalForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!renewalCustomerId) return;
+    
+    const c = customersCache.find(x => x.id === renewalCustomerId);
+    if (!c) return;
+    
+    const endInput = document.getElementById('renewEndDate');
+    const newEndDate = endInput ? endInput.value : '';
+    
+    const quotInput = document.getElementById('renewQuotationSelect');
+    const quotVal = quotInput ? quotInput.value : '';
+    
+    const noteInput = document.getElementById('renewNote');
+    const newNote = noteInput ? noteInput.value.trim() : '';
+    
+    let linkedQuotationId = '';
+    let linkedQuotationCode = '';
+    if (quotVal) {
+      const parts = quotVal.split('|');
+      linkedQuotationId = parts[0];
+      linkedQuotationCode = parts[1];
+    }
+    
+    const historyItem = {
+      id: 'hist_' + Date.now(),
+      contractEndDate: c.contractEndDate || '',
+      note: c.note || '',
+      quotationId: c.linkedQuotationId || '',
+      quotationCode: c.linkedQuotationCode || '',
+      renewedAt: new Date().toISOString()
+    };
+    
+    const contractHistory = c.contractHistory || [];
+    contractHistory.push(historyItem);
+    
+    const updates = {
+      contractEndDate: newEndDate,
+      note: newNote,
+      linkedQuotationId,
+      linkedQuotationCode,
+      contractHistory
+    };
+    
+    try {
+      await updateDoc(doc(db, 'customers', renewalCustomerId), updates);
+      await logActivity(`👤 ต่ออายุสัญญาลูกค้า "${c.name}" รอบใหม่ถึงวันที่ ${newEndDate}`);
+      closeRenewalModal();
+      showToast('ต่ออายุสัญญาสำเร็จและบันทึกประวัติการต่อรอบเก่าเรียบร้อย', 'success');
+    } catch (err) {
+      alert('เกิดข้อผิดพลาดในการต่ออายุสัญญา: ' + err.message);
+    }
+  });
+}
 
 window.editCustomer = (id) => {
   const c = customersCache.find(x => x.id === id);
@@ -3140,7 +3150,7 @@ function renderTeamMembers(users, tasks) {
       <div class="card" style="display:flex; justify-content:space-between; align-items:center; padding:12px 16px; margin-bottom:8px; border-left: 4px solid ${uColor.border};">
         <div onclick="viewEmployeeTasksAndHistory('${u.uid}', '${escapeHtml(u.name)}')" style="cursor:pointer; flex:1;" title="คลิกเพื่อดูงานของ ${u.name}">
           <div style="display:flex; align-items:center; gap:6px;">
-            <span class="avatar-initial" style="background:${uColor.border}; width:20px; height:20px; font-size:10px; color:#fff; display:inline-flex; align-items:center; justify-content:center; border-radius:50%;">${initial}</span>
+            <span class="avatar-initial" style="background:${uColor.border}; width:20px; height:20px; font-size:10px; color:#fff; display:inline-flex; align-items:center; justify-content:center; border-radius:50%;">${initials}</span>
             <strong style="font-size:14px; color:${uColor.border}; text-decoration:underline; text-decoration-style:dotted;">${nameLabel}</strong>
             ${onlineIndicator}
           </div>
