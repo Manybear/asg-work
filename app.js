@@ -148,8 +148,15 @@ async function logActivity(text) {
 }
 
 window.sendLineNotify = async function(msg) {
+  console.log("LINE Notify payload check:", {
+    url: settings.lineNotifyUrl,
+    token: settings.lineNotifyToken ? "exists" : "missing",
+    groupId: settings.lineGroupId ? "exists" : "missing",
+    msg: msg
+  });
   if (!settings.lineNotifyUrl || !settings.lineNotifyToken || !settings.lineGroupId) return;
   try {
+    console.log("Sending LINE message to proxy...");
     await fetch(settings.lineNotifyUrl, {
       method: 'POST',
       mode: 'no-cors',
@@ -162,6 +169,7 @@ window.sendLineNotify = async function(msg) {
         message: msg
       })
     });
+    console.log("LINE message sent successfully (no-cors).");
   } catch (err) {
     console.warn("LINE Official Account push notification failed:", err);
   }
