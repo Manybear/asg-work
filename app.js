@@ -287,6 +287,15 @@ async function loadUsers() {
     filterAssignee.value = selectedAssignee;
   }
   
+  // Populate calendar filter dropdown
+  const calFilter = document.getElementById('calendarFilterAssignee');
+  if (calFilter) {
+    const selectedVal = calFilter.value;
+    calFilter.innerHTML = '<option value="">ทุกคนในทีม (ทั้งหมด)</option>' + 
+      usersCache.map(u => `<option value="${u.uid}">${u.name}</option>`).join('');
+    calFilter.value = selectedVal;
+  }
+  
   renderTeamMembers(usersCache, tasksCache);
 }
 
@@ -1116,14 +1125,29 @@ function formatTaskShareMessage(t) {
          `🔗 ลิงก์ระบบ: https://manybear.github.io/asg-work/`;
 }
 
+function openLineShareUrl(msg) {
+  const encodedMsg = encodeURIComponent(msg);
+  // If the encoded message is very long (over 1500 chars), LINE will fail with a 414 error.
+  // In that case, we copy the message to the clipboard and show a toast/alert advising the user to paste it.
+  if (encodedMsg.length > 1500) {
+    navigator.clipboard.writeText(msg).then(() => {
+      alert(`⚠️ รายงานข้อความยาวเกินขีดจำกัดสูงสุดของแอป LINE (${encodedMsg.length} ตัวอักษร)\n\nระบบได้ทำการ "คัดลอกข้อความสรุปทั้งหมด" ลงคลิปบอร์ดให้คุณโดยอัตโนมัติแล้วครับ! สามารถเปิดแชท LINE แล้วกดวาง (Paste) ส่งได้ทันทีครับ`);
+    }).catch(err => {
+      alert('ไม่สามารถเปิดแชร์ไลน์หรือคัดลอกได้เนื่องจากข้อความยาวเกินไป: ' + err.message);
+    });
+  } else {
+    const lineUrl = `https://line.me/R/msg/text/?${encodedMsg}`;
+    window.open(lineUrl, '_blank');
+  }
+}
+
 window.sendTaskToLineShare = function() {
   if (!activeDetailsTaskId) return;
   const t = tasksCache.find(x => x.id === activeDetailsTaskId);
   if (!t) return;
   
   const msg = formatTaskShareMessage(t);
-  const lineUrl = `https://line.me/R/msg/text/?${encodeURIComponent(msg)}`;
-  window.open(lineUrl, '_blank');
+  openLineShareUrl(msg);
 };
 
 window.shareTaskToLineCard = function(taskId) {
@@ -1131,8 +1155,7 @@ window.shareTaskToLineCard = function(taskId) {
   if (!t) return;
   
   const msg = formatTaskShareMessage(t);
-  const lineUrl = `https://line.me/R/msg/text/?${encodeURIComponent(msg)}`;
-  window.open(lineUrl, '_blank');
+  openLineShareUrl(msg);
 };
 
 window.copyTaskLineShareLink = function() {
@@ -1245,6 +1268,162 @@ window.changeMonth = function(dir) {
   renderCalendar();
 };
 
+let currentCalendarView = 'month';
+
+window.changeMonth = function(dir) {
+  if (currentCalendarView === 'week') {
+    currentCalendarDate.setDate(currentCalendarDate.getDate() + (dir * 7));
+  } else {
+    currentCalendarDate.setMonth(currentCalendarDate.getMonth() + dir);
+  }
+  renderCalendar();
+};
+
+window.switchCalendarView = function(view) {
+  currentCalendarView = view;
+  document.getElementById('btnCalendarMonthView').classList.toggle('active', view === 'month');
+  document.getElementById('btnCalendarWeekView').classList.toggle('active', view === 'week');
+  renderCalendar();
+};
+
+function getEmployeeColor(name) {
+  const colors = [
+    { bg: '#f0fdf4', text: '#166534', border: '#15803d' }, // green
+    { bg: '#eff6ff', text: '#1e40af', border: '#1d4ed8' }, // blue
+    { bg: '#faf5ff', text: '#6b21a8', border: '#7e22ce' }, // purple
+    { bg: '#fff7ed', text: '#9a3412', border: '#c2410c' }, // orange
+    { bg: '#f5f3ff', text: '#5b21b6', border: '#6d28d9' }, // violet
+    { bg: '#f0fdfa', text: '#075985', border: '#0369a1' }, // sky
+    { bg: '#fff1f2', text: '#9f1239', border: '#be123c' }, // rose
+    { bg: '#fdf2f8', text: '#9d174d', border: '#c2185b' }  // pink
+  ];
+  let hash = 0;
+  const str = String(name || '');
+  for (let i = 0; i < str.length; i++) {
+    hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const index = Math.abs(hash) % colors.length;
+  return colors[index];
+}
+
+function getEmployeeInitials(name) {
+  if (!name) return '?';
+  const parts = name.trim().split(/\s+/);
+  if (parts.length > 1) {
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+  }
+  return parts[0].substring(0, 2).toUpperCase();
+}
+
+function renderDayCell(d, grid) {
+  const year = d.getFullYear();
+  const month = d.getMonth();
+  const day = d.getDate();
+  
+  const cell = document.createElement('div');
+  cell.className = 'calendar-day';
+  
+  const today = new Date();
+  if (day === today.getDate() && month === today.getMonth() && year === today.getFullYear()) {
+    cell.classList.add('today');
+  }
+  
+  const numSpan = document.createElement('span');
+  numSpan.className = 'calendar-day-num';
+  numSpan.textContent = day;
+  cell.appendChild(numSpan);
+  
+  const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  
+  // 1. Render Tasks
+  const isPrivateMode = visibleUids();
+  let dayTasks = tasksCache.filter(t => t.dueDate === dateStr);
+  
+  if (isPrivateMode) {
+    dayTasks = dayTasks.filter(t => (t.assignees && t.assignees.includes(profile.uid)) || (t.assignee === profile.uid));
+  }
+  
+  const filterVal = document.getElementById('calendarFilterAssignee') ? document.getElementById('calendarFilterAssignee').value : '';
+  if (filterVal) {
+    dayTasks = dayTasks.filter(t => (t.assignees && t.assignees.includes(filterVal)) || (t.assignee === filterVal));
+  }
+  
+  dayTasks.forEach(t => {
+    const taskDiv = document.createElement('div');
+    taskDiv.className = `calendar-task-item ${t.status === 'done' ? 'done' : t.priority || 'mid'}`;
+    
+    let assigneesList = [];
+    if (t.assignees && t.assignees.length > 0) {
+      assigneesList = t.assignees.map(uid => usersCache.find(u => u.uid === uid)).filter(Boolean);
+    } else if (t.assignee) {
+      const u = usersCache.find(x => x.uid === t.assignee);
+      if (u) assigneesList.push(u);
+    }
+    
+    if (assigneesList.length > 0) {
+      const primaryColor = getEmployeeColor(assigneesList[0].name);
+      taskDiv.style.borderLeftColor = primaryColor.border;
+    }
+    
+    const titleSpan = document.createElement('span');
+    titleSpan.style.overflow = 'hidden';
+    titleSpan.style.textOverflow = 'ellipsis';
+    titleSpan.textContent = (t.status === 'done' ? '✓ ' : '') + t.title;
+    taskDiv.appendChild(titleSpan);
+    
+    const avatarsContainer = document.createElement('div');
+    avatarsContainer.style.display = 'flex';
+    avatarsContainer.style.gap = '2px';
+    avatarsContainer.style.alignItems = 'center';
+    
+    assigneesList.slice(0, 3).forEach(u => {
+      const uColor = getEmployeeColor(u.name);
+      const av = document.createElement('span');
+      av.className = 'avatar-initial';
+      av.style.backgroundColor = uColor.border;
+      av.style.color = '#fff';
+      av.textContent = getEmployeeInitials(u.name);
+      av.title = u.name;
+      avatarsContainer.appendChild(av);
+    });
+    taskDiv.appendChild(avatarsContainer);
+    
+    taskDiv.title = `${t.title} (${t.status === 'done' ? 'เสร็จแล้ว' : 'ค้างคา'})\nผู้รับผิดชอบ: ${assigneesList.map(x => x.name).join(', ')}`;
+    taskDiv.onclick = (e) => {
+      e.stopPropagation();
+      openTaskDetailsModal(t.id);
+    };
+    cell.appendChild(taskDiv);
+  });
+  
+  // 2. Render Customer Contracts (skip if assignee filter is active)
+  if (!filterVal) {
+    const expiringCustomers = customersCache.filter(c => c.contractEndDate === dateStr);
+    expiringCustomers.forEach(c => {
+      const contractDiv = document.createElement('div');
+      contractDiv.className = 'calendar-task-item';
+      contractDiv.style.borderLeftColor = '#ef4444';
+      contractDiv.style.background = '#fef2f2';
+      contractDiv.style.color = '#991b1b';
+      
+      const titleSpan = document.createElement('span');
+      titleSpan.style.overflow = 'hidden';
+      titleSpan.style.textOverflow = 'ellipsis';
+      titleSpan.innerHTML = `🏢 ${c.name}`;
+      contractDiv.appendChild(titleSpan);
+      
+      contractDiv.title = `🏢 สัญญาหมดอายุ: ${c.name}\nเบอร์โทร: ${c.phone || '-'}\nTax ID: ${c.taxId || '-'}`;
+      contractDiv.onclick = (e) => {
+        e.stopPropagation();
+        showCustomerCard(c.id);
+      };
+      cell.appendChild(contractDiv);
+    });
+  }
+  
+  grid.appendChild(cell);
+}
+
 function renderCalendar() {
   const grid = document.getElementById('calendarDaysGrid');
   const label = document.getElementById('calendarMonthLabel');
@@ -1257,51 +1436,212 @@ function renderCalendar() {
     "มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน",
     "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"
   ];
-  label.textContent = `${thaiMonths[month]} ${year + 543}`;
   
-  grid.innerHTML = '';
-  
-  const firstDayIndex = new Date(year, month, 1).getDay();
-  const totalDays = new Date(year, month + 1, 0).getDate();
-  
-  for (let i = 0; i < firstDayIndex; i++) {
-    const emptyCell = document.createElement('div');
-    emptyCell.className = 'calendar-day empty-day';
-    grid.appendChild(emptyCell);
-  }
-  
-  const today = new Date();
-  for (let day = 1; day <= totalDays; day++) {
-    const cell = document.createElement('div');
-    cell.className = 'calendar-day';
+  if (currentCalendarView === 'week') {
+    const startOfWeek = new Date(currentCalendarDate);
+    startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
     
-    if (day === today.getDate() && month === today.getMonth() && year === today.getFullYear()) {
-      cell.classList.add('today');
+    const startStr = `${startOfWeek.getDate()} ${thaiMonths[startOfWeek.getMonth()]}`;
+    const endOfWeek = new Date(startOfWeek);
+    endOfWeek.setDate(startOfWeek.getDate() + 6);
+    const endStr = `${endOfWeek.getDate()} ${thaiMonths[endOfWeek.getMonth()]} ${endOfWeek.getFullYear() + 543}`;
+    label.textContent = `สัปดาห์: ${startStr} - ${endStr}`;
+    
+    grid.innerHTML = '';
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(startOfWeek);
+      d.setDate(startOfWeek.getDate() + i);
+      renderDayCell(d, grid);
+    }
+  } else {
+    label.textContent = `${thaiMonths[month]} ${year + 543}`;
+    grid.innerHTML = '';
+    
+    const firstDayIndex = new Date(year, month, 1).getDay();
+    const totalDays = new Date(year, month + 1, 0).getDate();
+    
+    for (let i = 0; i < firstDayIndex; i++) {
+      const emptyCell = document.createElement('div');
+      emptyCell.className = 'calendar-day empty-day';
+      grid.appendChild(emptyCell);
     }
     
-    const numSpan = document.createElement('span');
-    numSpan.className = 'calendar-day-num';
-    numSpan.textContent = day;
-    cell.appendChild(numSpan);
+    for (let day = 1; day <= totalDays; day++) {
+      const d = new Date(year, month, day);
+      renderDayCell(d, grid);
+    }
+  }
+  
+  // Render Sidebar alerts
+  renderCalendarSidebar();
+}
+
+function renderCalendarSidebar() {
+  const sidebar = document.getElementById('calendarAlertList');
+  if (!sidebar) return;
+  
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  
+  let html = '';
+  
+  // 1. GATHER TASKS ALERTS
+  const overdueTasks = tasksCache.filter(t => t.dueDate && t.dueDate < todayStr && t.status !== 'done');
+  const todayTasks = tasksCache.filter(t => t.dueDate === todayStr && t.status !== 'done');
+  
+  const upcomingTasks = tasksCache.filter(t => {
+    if (!t.dueDate || t.status === 'done' || t.dueDate <= todayStr) return false;
+    const diff = new Date(t.dueDate) - today;
+    const days = Math.round(diff / 86400000);
+    return days > 0 && days <= 5;
+  });
+  
+  // 2. GATHER CONTRACTS ALERTS
+  const expiredContracts = customersCache.filter(c => c.contractEndDate && c.contractEndDate < todayStr);
+  const expiringContracts = customersCache.filter(c => {
+    if (!c.contractEndDate || c.contractEndDate < todayStr) return false;
+    const diff = new Date(c.contractEndDate) - today;
+    const days = Math.round(diff / 86400000);
+    return days >= 0 && days <= 30;
+  });
+  
+  let hasAlerts = false;
+  
+  // A. Contracts Alerts Section
+  if (expiredContracts.length > 0 || expiringContracts.length > 0) {
+    hasAlerts = true;
+    html += `<h4 style="font-size:12px; font-weight:700; color:#b91c1c; margin-top:6px; margin-bottom:8px; display:flex; align-items:center; gap:4px;"><i class="fa-solid fa-file-shield"></i> สัญญาบริการลูกค้า</h4>`;
     
-    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    const dayTasks = tasksCache.filter(t => t.dueDate === dateStr);
-    
-    dayTasks.forEach(t => {
-      const taskDiv = document.createElement('div');
-      taskDiv.className = `calendar-task-item ${t.status === 'done' ? 'done' : t.priority || 'mid'}`;
-      taskDiv.textContent = t.title;
-      taskDiv.title = `${t.title} (${t.status})`;
-      taskDiv.onclick = (e) => {
-        e.stopPropagation();
-        openTaskDetailsModal(t.id);
-      };
-      cell.appendChild(taskDiv);
+    expiredContracts.forEach(c => {
+      const days = Math.round((today - new Date(c.contractEndDate)) / 86400000);
+      html += `
+        <div class="sidebar-alert-item" style="border-left: 3px solid #ef4444;" onclick="showCustomerCard('${c.id}')">
+          <div style="flex:1;">
+            <div class="sidebar-alert-title">🏢 ${c.name}</div>
+            <div class="sidebar-alert-meta">วันหมดสัญญา: ${c.contractEndDate}</div>
+            <span class="sidebar-alert-status" style="background:#fef2f2; color:#ef4444; border:1px solid #fca5a5; font-size:9.5px; padding:1px 6px;">🔴 หมดสัญญามาแล้ว ${days} วัน</span>
+          </div>
+        </div>
+      `;
     });
     
-    grid.appendChild(cell);
+    expiringContracts.forEach(c => {
+      const diff = new Date(c.contractEndDate) - today;
+      const days = Math.round(diff / 86400000);
+      const statusLabel = days === 0 ? 'หมดสัญญาวันนี้!' : `เหลือสัญญาอีก ${days} วัน`;
+      html += `
+        <div class="sidebar-alert-item" style="border-left: 3px solid #f97316;" onclick="showCustomerCard('${c.id}')">
+          <div style="flex:1;">
+            <div class="sidebar-alert-title">🏢 ${c.name}</div>
+            <div class="sidebar-alert-meta">วันหมดสัญญา: ${c.contractEndDate}</div>
+            <span class="sidebar-alert-status" style="background:#fff7ed; color:#d97706; border:1px solid #fdba74; font-size:9.5px; padding:1px 6px;">🟡 ${statusLabel}</span>
+          </div>
+        </div>
+      `;
+    });
+  }
+  
+  // B. Tasks Alerts Section
+  if (overdueTasks.length > 0 || todayTasks.length > 0 || upcomingTasks.length > 0) {
+    hasAlerts = true;
+    html += `<h4 style="font-size:12px; font-weight:700; color:var(--text-dark); margin-top:14px; margin-bottom:8px; display:flex; align-items:center; gap:4px;"><i class="fa-solid fa-list-check"></i> รายการส่งมอบงานทีม</h4>`;
+    
+    overdueTasks.forEach(t => {
+      const diff = Math.round((today - new Date(t.dueDate)) / 86400000);
+      let assigneesText = 'ไม่ระบุ';
+      if (t.assignees && t.assignees.length > 0) {
+        assigneesText = t.assignees.map(uid => {
+          const u = usersCache.find(x => x.uid === uid);
+          return u ? u.name : '';
+        }).filter(Boolean).join(', ');
+      } else if (t.assignee) {
+        const u = usersCache.find(x => x.uid === t.assignee);
+        if (u) assigneesText = u.name;
+      }
+      
+      html += `
+        <div class="sidebar-alert-item" style="border-left: 3px solid #ef4444;" onclick="openTaskDetailsModal('${t.id}')">
+          <div style="flex:1;">
+            <div class="sidebar-alert-title">📌 ${t.title}</div>
+            <div class="sidebar-alert-meta">กำหนดส่ง: ${t.dueDate} | ผู้ทำ: ${assigneesText}</div>
+            <span class="sidebar-alert-status" style="background:#fef2f2; color:#ef4444; border:1px solid #fca5a5; font-size:9.5px; padding:1px 6px;">🔴 เลยกำหนดมาแล้ว ${diff} วัน</span>
+          </div>
+        </div>
+      `;
+    });
+    
+    todayTasks.forEach(t => {
+      let assigneesText = 'ไม่ระบุ';
+      if (t.assignees && t.assignees.length > 0) {
+        assigneesText = t.assignees.map(uid => {
+          const u = usersCache.find(x => x.uid === uid);
+          return u ? u.name : '';
+        }).filter(Boolean).join(', ');
+      } else if (t.assignee) {
+        const u = usersCache.find(x => x.uid === t.assignee);
+        if (u) assigneesText = u.name;
+      }
+      
+      html += `
+        <div class="sidebar-alert-item" style="border-left: 3px solid #ea580c;" onclick="openTaskDetailsModal('${t.id}')">
+          <div style="flex:1;">
+            <div class="sidebar-alert-title">📌 ${t.title}</div>
+            <div class="sidebar-alert-meta">กำหนดส่ง: วันนี้ | ผู้ทำ: ${assigneesText}</div>
+            <span class="sidebar-alert-status" style="background:#fff7ed; color:#ea580c; border:1px solid #fdba74; font-size:9.5px; padding:1px 6px;">🟡 ครบกำหนดวันนี้</span>
+          </div>
+        </div>
+      `;
+    });
+    
+    upcomingTasks.forEach(t => {
+      const diff = new Date(t.dueDate) - today;
+      const days = Math.round(diff / 86400000);
+      let assigneesText = 'ไม่ระบุ';
+      if (t.assignees && t.assignees.length > 0) {
+        assigneesText = t.assignees.map(uid => {
+          const u = usersCache.find(x => x.uid === uid);
+          return u ? u.name : '';
+        }).filter(Boolean).join(', ');
+      } else if (t.assignee) {
+        const u = usersCache.find(x => x.uid === t.assignee);
+        if (u) assigneesText = u.name;
+      }
+      
+      html += `
+        <div class="sidebar-alert-item" style="border-left: 3px solid #eab308;" onclick="openTaskDetailsModal('${t.id}')">
+          <div style="flex:1;">
+            <div class="sidebar-alert-title">📌 ${t.title}</div>
+            <div class="sidebar-alert-meta">กำหนดส่ง: ${t.dueDate} | ผู้ทำ: ${assigneesText}</div>
+            <span class="sidebar-alert-status" style="background:#fef9c3; color:#a16207; border:1px solid #fef08a; font-size:9.5px; padding:1px 6px;">🟡 ใกล้ส่ง (อีก ${days} วัน)</span>
+          </div>
+        </div>
+      `;
+    });
+  }
+  
+  if (!hasAlerts) {
+    sidebar.innerHTML = `<p class="muted" style="font-size:12px; padding: 20px 0;">🎉 ไม่มีคิวสัญญาลูกค้าหมดอายุหรือความเร่งด่วนในขณะนี้</p>`;
+  } else {
+    sidebar.innerHTML = html;
   }
 }
+
+window.showCustomerCard = (id) => {
+  showPage('customers');
+  setTimeout(() => {
+    const card = document.getElementById(`customer-card-${id}`);
+    if (card) {
+      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      card.style.borderColor = 'var(--primary-red)';
+      card.style.boxShadow = '0 0 15px rgba(185, 28, 28, 0.4)';
+      setTimeout(() => {
+        card.style.borderColor = '';
+        card.style.boxShadow = '';
+      }, 2500);
+    }
+  }, 100);
+};
 
 // ---------- CUSTOMERS & CONTRACTS CRUD ----------
 
@@ -1885,8 +2225,7 @@ function formatIndividualGroupedMessage(name, dateStr, detailsText) {
 window.sendIndividualGroupedUpdateToLine = (name, dateStr, encodedDetails) => {
   const detailsText = decodeURIComponent(encodedDetails);
   const msg = formatIndividualGroupedMessage(name, dateStr, detailsText);
-  const lineUrl = `https://line.me/R/msg/text/?${encodeURIComponent(msg)}`;
-  window.open(lineUrl, '_blank');
+  openLineShareUrl(msg);
 };
 
 window.copyIndividualGroupedUpdateText = (name, dateStr, encodedDetails) => {
@@ -2727,8 +3066,7 @@ window.sendDailyReportToLine = () => {
     return;
   }
   
-  const lineUrl = `https://line.me/R/msg/text/?${encodeURIComponent(msg)}`;
-  window.open(lineUrl, '_blank');
+  openLineShareUrl(msg);
 };
 
 window.printPage = (pageId) => {
