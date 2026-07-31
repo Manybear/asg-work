@@ -1263,12 +1263,8 @@ window.onModalStatusChange = async (val) => {
 
 // ---------- CALENDAR LOGIC ----------
 
-window.changeMonth = function(dir) {
-  currentCalendarDate.setMonth(currentCalendarDate.getMonth() + dir);
-  renderCalendar();
-};
-
 let currentCalendarView = 'month';
+let activeCalendarDayDetail = null;
 
 window.changeMonth = function(dir) {
   if (currentCalendarView === 'week') {
@@ -1284,6 +1280,22 @@ window.switchCalendarView = function(view) {
   document.getElementById('btnCalendarMonthView').classList.toggle('active', view === 'month');
   document.getElementById('btnCalendarWeekView').classList.toggle('active', view === 'week');
   renderCalendar();
+};
+
+window.showUserActivitiesInSidebar = function(userName, dateStr, userUpdates) {
+  activeCalendarDayDetail = { userName, dateStr, updates: userUpdates };
+  renderCalendarSidebar();
+  
+  // Scroll the sidebar to the top to show the details card
+  const sidebarContainer = document.querySelector('.calendar-sidebar-card');
+  if (sidebarContainer) {
+    sidebarContainer.scrollTop = 0;
+  }
+};
+
+window.clearCalendarDayDetail = function() {
+  activeCalendarDayDetail = null;
+  renderCalendarSidebar();
 };
 
 function getEmployeeColor(name) {
@@ -1421,6 +1433,49 @@ function renderDayCell(d, grid) {
     });
   }
   
+  // 3. Render Employee Activity Logs (History logs)
+  const dayUpdates = updatesCache.filter(u => u.date === dateStr);
+  let visibleDayUpdates = isPrivateMode ? dayUpdates.filter(u => isPrivateMode.includes(u.uid)) : dayUpdates;
+  if (filterVal) {
+    visibleDayUpdates = visibleDayUpdates.filter(u => u.uid === filterVal);
+  }
+  
+  if (visibleDayUpdates.length > 0) {
+    // Group updates by uid
+    const grouped = {};
+    visibleDayUpdates.forEach(u => {
+      if (!grouped[u.uid]) grouped[u.uid] = [];
+      grouped[u.uid].push(u);
+    });
+    
+    Object.keys(grouped).forEach(uid => {
+      const user = usersCache.find(x => x.uid === uid);
+      const userName = user ? user.name : 'ไม่ระบุผู้ใช้';
+      const uColor = getEmployeeColor(userName);
+      const userUpdates = grouped[uid];
+      const count = userUpdates.length;
+      
+      const actDiv = document.createElement('div');
+      actDiv.className = 'calendar-task-item';
+      actDiv.style.borderLeftColor = uColor.border;
+      actDiv.style.background = uColor.bg;
+      actDiv.style.color = uColor.text;
+      
+      const titleSpan = document.createElement('span');
+      titleSpan.style.overflow = 'hidden';
+      titleSpan.style.textOverflow = 'ellipsis';
+      titleSpan.innerHTML = `<i class="fa-regular fa-clipboard"></i> ${userName} (${count} งาน)`;
+      actDiv.appendChild(titleSpan);
+      
+      actDiv.title = `📝 บันทึกงานของ ${userName} วันที่ ${dateStr} (${count} รายการ)\nคลิกเพื่อเปิดรายละเอียดในแถบด้านข้าง`;
+      actDiv.onclick = (e) => {
+        e.stopPropagation();
+        showUserActivitiesInSidebar(userName, dateStr, userUpdates);
+      };
+      cell.appendChild(actDiv);
+    });
+  }
+  
   grid.appendChild(cell);
 }
 
@@ -1485,6 +1540,46 @@ function renderCalendarSidebar() {
   const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
   
   let html = '';
+  
+  // Prepend selected calendar day updates detail if active
+  if (activeCalendarDayDetail) {
+    const { userName, dateStr, updates } = activeCalendarDayDetail;
+    const uColor = getEmployeeColor(userName);
+    const initials = getEmployeeInitials(userName);
+    const sorted = [...updates].sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+    
+    const parts = dateStr.split('-');
+    const thaiYear = parseInt(parts[0], 10) + 543;
+    const formattedDate = `${parts[2]}/${parts[1]}/${thaiYear}`;
+    
+    const rawDetails = updates.map(x => `- [${x.time || ''}] ${x.text}`).join('\n');
+    const encodedText = encodeURIComponent(rawDetails);
+    
+    html += `
+      <div style="background:${uColor.bg}; border: 1px solid ${uColor.border}; border-radius: 8px; padding: 12px; margin-bottom: 16px; position: relative; animation: fadeIn 0.2s ease;">
+        <button onclick="clearCalendarDayDetail()" style="position: absolute; right: 8px; top: 6px; background: none; border: none; font-size: 18px; font-weight:700; color: ${uColor.border}; cursor: pointer;" title="ปิดหน้าต่าง">&times;</button>
+        <h4 style="font-size: 13px; font-weight: 700; color: ${uColor.border}; margin: 0 0 4px 0; display: flex; align-items: center; gap: 6px;">
+          <span class="avatar-initial" style="background:${uColor.border}; width:18px; height:18px; font-size:9.5px; color:#fff;">${initials}</span>
+          รายงานกิจกรรม: ${userName}
+        </h4>
+        <div style="font-size: 10.5px; color: var(--text-muted); margin-bottom: 8px;"><i class="fa-solid fa-calendar-day"></i> วันที่ ${formattedDate}</div>
+        <ul style="margin: 0; padding-left: 12px; font-size: 11.5px; line-height: 1.5; color: var(--text-dark);">
+    `;
+    
+    sorted.forEach(u => {
+      const displayTime = u.time ? `<strong style="color:${uColor.border};">[${u.time}]</strong>` : '';
+      html += `<li style="margin-bottom: 4px; list-style: disc;">${displayTime} ${escapeHtml(u.text)}</li>`;
+    });
+    
+    html += `
+        </ul>
+        <div style="display:flex; gap:6px; margin-top:10px;">
+          <button class="btn btn-ghost btn-sm" onclick="sendIndividualGroupedUpdateToLine('${userName}', '${dateStr}', '${encodedText}')" style="font-size:10px; color:#06c755; display:inline-flex; align-items:center; gap:3px; padding:3px 6px; border:1px solid #06c755; border-radius:4px; background:#fff;"><i class="fa-brands fa-line"></i> ส่ง LINE</button>
+          <button class="btn btn-ghost btn-sm" onclick="copyIndividualGroupedUpdateText('${userName}', '${dateStr}', '${encodedText}')" style="font-size:10px; display:inline-flex; align-items:center; gap:3px; padding:3px 6px; border:1px solid var(--border-color); border-radius:4px; background:#fff;"><i class="fa-regular fa-copy"></i> คัดลอก</button>
+        </div>
+      </div>
+    `;
+  }
   
   // 1. GATHER TASKS ALERTS
   const overdueTasks = tasksCache.filter(t => t.dueDate && t.dueDate < todayStr && t.status !== 'done');
@@ -2731,11 +2826,15 @@ function renderDailyUpdates(updates) {
     
     const encodedText = encodeURIComponent(reportDetailsText);
     
+    const uColor = getEmployeeColor(userName);
+    const initials = getEmployeeInitials(userName);
+    
     return `
-      <div class="card" style="margin-bottom: 12px; border-left: 4px solid var(--primary-red); padding: 12px;">
+      <div class="card" style="margin-bottom: 12px; border-left: 4px solid ${uColor.border}; padding: 12px; background: #fff;">
         <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border-color); padding-bottom:8px; margin-bottom:8px;">
-          <div>
-            <strong style="color:var(--primary-red); font-size:15px;"><i class="fa-solid fa-user-tie"></i> ${userName}</strong>
+          <div style="display:flex; align-items:center; gap:6px;">
+            <span class="avatar-initial" style="background:${uColor.border}; width:18px; height:18px; font-size:10px; color:#fff;">${initials}</span>
+            <strong style="color:${uColor.border}; font-size:15px;">${userName}</strong>
             <span class="ts" style="margin-left: 10px; font-size:12px; color:var(--text-muted);"><i class="fa-solid fa-calendar-day"></i> ${dateStr}</span>
           </div>
           <div style="display:flex; gap:6px; align-items:center;">
