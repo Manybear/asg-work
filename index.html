@@ -15,7 +15,7 @@
   <!-- html2pdf.js for A4 Quotation PDF downloads -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
   <!-- Main Stylesheet -->
-  <link rel="stylesheet" href="style.css?v=3.5">
+  <link rel="stylesheet" href="style.css?v=3.7">
 </head>
 <body>
 
@@ -841,7 +841,38 @@
   </div>
 </div>
 
+<!-- E. CONTRACT RENEWAL MODAL -->
+<div class="modal-bg" id="renewalModal">
+  <div class="modal" style="max-width: 450px;">
+    <h2>ต่ออายุสัญญาบริการลูกค้า</h2>
+    <form id="renewalForm">
+      <div class="form-row">
+        <label>ชื่อลูกค้า / บริษัท</label>
+        <input type="text" id="renewCustName" disabled style="background:#f1f5f9; color:var(--text-muted);">
+      </div>
+      <div class="form-row">
+        <label>วันสิ้นสุดสัญญาใหม่ *</label>
+        <input type="date" id="renewEndDate" required>
+      </div>
+      <div class="form-row">
+        <label>ผูกกับใบเสนอราคา (Quotation)</label>
+        <select id="renewQuotationSelect" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); font-family: var(--font-family);">
+          <option value="">-- ไม่ผูกใบเสนอราคา --</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label>หมายเหตุรอบสัญญาใหม่</label>
+        <input type="text" id="renewNote" placeholder="เช่น ต่ออายุสัญญาปีที่ 2, ยอดเงิน..." value="">
+      </div>
+      <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:16px;">
+        <button type="submit" class="btn btn-primary"><i class="fa-solid fa-arrows-rotate"></i> ยืนยันต่ออายุสัญญา</button>
+        <button type="button" class="btn btn-ghost" onclick="closeRenewalModal()">ยกเลิก</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <!-- Firebase scripts -->
-<script type="module" src="app.js?v=3.5"></script>
+<script type="module" src="app.js?v=3.7"></script>
 </body>
 </html>
