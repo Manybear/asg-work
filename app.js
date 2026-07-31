@@ -199,6 +199,8 @@ onAuthStateChanged(auth, async (user) => {
       await loadUsers();
       initRealtimeListeners();
       showPage('dashboard');
+      updateUserPresence();
+      setInterval(updateUserPresence, 120000);
     } else {
       const loginScreen = document.getElementById('loginScreen');
       if (loginScreen) loginScreen.classList.add('active-screen');
@@ -213,6 +215,43 @@ onAuthStateChanged(auth, async (user) => {
     }
   }
 });
+
+let lastPresenceUpdate = 0;
+
+async function updateUserPresence() {
+  if (!currentUser) return;
+  const now = Date.now();
+  if (now - lastPresenceUpdate < 120000) return; // 2 minutes throttle
+  
+  lastPresenceUpdate = now;
+  try {
+    await updateDoc(doc(db, 'users', currentUser.uid), {
+      lastActive: serverTimestamp()
+    });
+  } catch (e) {
+    console.warn("Failed to update presence:", e);
+  }
+}
+
+function isUserOnline(user) {
+  if (!user || !user.lastActive) return false;
+  const lastActiveTime = user.lastActive.toDate ? user.lastActive.toDate().getTime() : new Date(user.lastActive).getTime();
+  const diff = Date.now() - lastActiveTime;
+  return diff <= 300000; // Online if active in last 5 minutes
+}
+
+function formatLastActive(lastActive) {
+  if (!lastActive) return 'ไม่เคยเข้าใช้งาน';
+  const time = lastActive.toDate ? lastActive.toDate().getTime() : new Date(lastActive).getTime();
+  const diff = Date.now() - time;
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'เมื่อสักครู่';
+  if (mins < 60) return `${mins} นาทีที่แล้ว`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours} ชั่วโมงที่แล้ว`;
+  const days = Math.floor(hours / 24);
+  return `${days} วันที่แล้ว`;
+}
 
 async function loadProfile(uid, email) {
   const ref = doc(db, 'users', uid);
@@ -338,6 +377,7 @@ if (companyForm) {
 // ---------- NAVIGATION CONTROL ----------
 
 window.showPage = function (page) {
+  updateUserPresence();
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   
@@ -705,11 +745,22 @@ window.openAddTaskModal = function(taskId = null) {
     
   // Render multi-assignee checkboxes
   const checkboxesContainer = document.getElementById('taskAssigneesCheckboxes');
-  checkboxesContainer.innerHTML = usersCache.map(u => `
-    <label style="display:inline-flex; align-items:center; gap:8px; font-weight:normal; cursor:pointer; margin-bottom: 2px;">
-      <input type="checkbox" class="task-assignee-checkbox" value="${u.uid}" style="width:16px; height:16px; accent-color:var(--primary-red);"> ${u.name}
-    </label>
-  `).join('');
+  checkboxesContainer.innerHTML = usersCache.map(u => {
+    const isOnline = isUserOnline(u);
+    const uColor = getEmployeeColor(u.name);
+    const onlineIndicator = isOnline 
+      ? `<span style="width: 8px; height: 8px; background: #22c55e; border-radius: 50%; display: inline-block; box-shadow: 0 0 6px #22c55e; margin-left:4px;" title="ออนไลน์"></span>`
+      : `<span style="width: 8px; height: 8px; background: #94a3b8; border-radius: 50%; display: inline-block; margin-left:4px;" title="ออฟไลน์ (ใช้งานล่าสุด: ${formatLastActive(u.lastActive)})"></span>`;
+    
+    return `
+      <label style="display:inline-flex; align-items:center; gap:8px; font-weight:normal; cursor:pointer; margin-bottom: 2px;">
+        <input type="checkbox" class="task-assignee-checkbox" value="${u.uid}" style="width:16px; height:16px; accent-color:var(--primary-red);"> 
+        <span class="avatar-initial" style="background:${uColor.border}; width:16px; height:16px; font-size:9px; color:#fff; display:inline-flex; align-items:center; justify-content:center; border-radius:50%;">${getEmployeeInitials(u.name)}</span>
+        <span style="color:${uColor.border}; font-weight:600; font-size:13px;">${u.name}</span>
+        ${onlineIndicator}
+      </label>
+    `;
+  }).join('');
   
   populateTagsDropdowns();
 
@@ -1819,6 +1870,102 @@ document.getElementById('customerForm').addEventListener('submit', async (e) => 
   }
 });
 
+let renewalCustomerId = null;
+
+window.openRenewalModal = function(id) {
+  const c = customersCache.find(x => x.id === id);
+  if (!c) return;
+  
+  renewalCustomerId = id;
+  document.getElementById('renewCustName').value = c.name || '';
+  document.getElementById('renewEndDate').value = '';
+  document.getElementById('renewNote').value = '';
+  
+  const select = document.getElementById('renewQuotationSelect');
+  if (select) {
+    const custName = (c.name || '').toLowerCase();
+    const relatedQuots = quotationsCache.filter(q => (q.qtCustomer || '').toLowerCase() === custName);
+    
+    let optionsHtml = '<option value="">-- ไม่ผูกใบเสนอราคา --</option>';
+    
+    if (relatedQuots.length > 0) {
+      optionsHtml += `<optgroup label="ใบเสนอราคาของเจ้านี้">`;
+      relatedQuots.forEach(q => {
+        optionsHtml += `<option value="${q.id}|${q.qtCode}">${q.qtCode} - วันที่ ${q.qtDate || '-'} (ยอด ${parseFloat(q.grandTotal || 0).toLocaleString()} บ.)</option>`;
+      });
+      optionsHtml += `</optgroup>`;
+    }
+    
+    const otherQuots = quotationsCache.filter(q => (q.qtCustomer || '').toLowerCase() !== custName);
+    if (otherQuots.length > 0) {
+      optionsHtml += `<optgroup label="ใบเสนอราคาอื่น ๆ">`;
+      otherQuots.forEach(q => {
+        optionsHtml += `<option value="${q.id}|${q.qtCode}">${q.qtCode} (${q.qtCustomer || 'ไม่ระบุ'}) - วันที่ ${q.qtDate || '-'} (ยอด ${parseFloat(q.grandTotal || 0).toLocaleString()} บ.)</option>`;
+      });
+      optionsHtml += `</optgroup>`;
+    }
+    
+    select.innerHTML = optionsHtml;
+  }
+  
+  document.getElementById('renewalModal').style.display = 'flex';
+};
+
+window.closeRenewalModal = function() {
+  renewalCustomerId = null;
+  document.getElementById('renewalForm').reset();
+  document.getElementById('renewalModal').style.display = 'none';
+};
+
+document.getElementById('renewalForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (!renewalCustomerId) return;
+  
+  const c = customersCache.find(x => x.id === renewalCustomerId);
+  if (!c) return;
+  
+  const newEndDate = document.getElementById('renewEndDate').value;
+  const quotVal = document.getElementById('renewQuotationSelect').value;
+  const newNote = document.getElementById('renewNote').value.trim();
+  
+  let linkedQuotationId = '';
+  let linkedQuotationCode = '';
+  if (quotVal) {
+    const parts = quotVal.split('|');
+    linkedQuotationId = parts[0];
+    linkedQuotationCode = parts[1];
+  }
+  
+  const historyItem = {
+    id: 'hist_' + Date.now(),
+    contractEndDate: c.contractEndDate || '',
+    note: c.note || '',
+    quotationId: c.linkedQuotationId || '',
+    quotationCode: c.linkedQuotationCode || '',
+    renewedAt: new Date().toISOString()
+  };
+  
+  const contractHistory = c.contractHistory || [];
+  contractHistory.push(historyItem);
+  
+  const updates = {
+    contractEndDate: newEndDate,
+    note: newNote,
+    linkedQuotationId,
+    linkedQuotationCode,
+    contractHistory
+  };
+  
+  try {
+    await updateDoc(doc(db, 'customers', renewalCustomerId), updates);
+    await logActivity(`👤 ต่ออายุสัญญาลูกค้า "${c.name}" รอบใหม่ถึงวันที่ ${newEndDate}`);
+    closeRenewalModal();
+    showToast('ต่ออายุสัญญาสำเร็จและบันทึกประวัติการต่อรอบเก่าเรียบร้อย', 'success');
+  } catch (err) {
+    alert('เกิดข้อผิดพลาดในการต่ออายุสัญญา: ' + err.message);
+  }
+});
+
 window.editCustomer = (id) => {
   const c = customersCache.find(x => x.id === id);
   if (!c) return;
@@ -1880,6 +2027,27 @@ function renderCustomers(customers) {
       }
     }
     
+    const linkedQuotHtml = c.linkedQuotationCode ? `<div style="font-size:12px; color:#2563eb; margin-top:2px;"><strong><i class="fa-solid fa-link"></i> ผูกใบเสนอราคา:</strong> ${c.linkedQuotationCode}</div>` : '';
+    
+    let historyHtml = '';
+    if (c.contractHistory && c.contractHistory.length > 0) {
+      const sortedHistory = [...c.contractHistory].sort((a, b) => b.renewedAt.localeCompare(a.renewedAt));
+      historyHtml = `
+        <div style="margin-top: 8px; border-top: 1px dashed var(--border-color); padding-top: 6px;">
+          <strong style="font-size:11px; color:var(--text-dark); display:block; margin-bottom:4px;"><i class="fa-solid fa-clock-rotate-left"></i> ประวัติสัญญารอบก่อนหน้า:</strong>
+          <div style="max-height: 80px; overflow-y: auto; display:flex; flex-direction:column; gap:3px;">
+            ${sortedHistory.map(h => {
+              const histParts = h.contractEndDate ? h.contractEndDate.split('-') : [];
+              const histYear = histParts[0] ? parseInt(histParts[0], 10) + 543 : '';
+              const histDateStr = histParts[0] ? `${histParts[2]}/${histParts[1]}/${histYear}` : '-';
+              const quotLabel = h.quotationCode ? ` (ใบเสนอราคา: ${h.quotationCode})` : '';
+              return `<div style="font-size:11px; color:var(--text-muted);">• หมดอายุ: ${histDateStr}${quotLabel} ${h.note ? ` | ${h.note}` : ''}</div>`;
+            }).join('')}
+          </div>
+        </div>
+      `;
+    }
+    
     return `
       <div class="card" id="customer-card-${c.id}" style="display:flex; flex-direction:column; gap:4px; transition: all 0.2s;">
         <div style="display:flex; justify-content:space-between; align-items:flex-start">
@@ -1887,15 +2055,18 @@ function renderCustomers(customers) {
           ${badgeHtml}
         </div>
         <div class="ts"><i class="fa-regular fa-calendar-check"></i> ครบกำหนดสัญญา: ${c.contractEndDate || '-'}</div>
-        <div style="font-size:12.5px; color:var(--text-muted);">
+        ${linkedQuotHtml}
+        <div style="font-size:12.5px; color:var(--text-muted); margin-top:2px;">
           ${c.taxId ? `<div><strong>Tax ID:</strong> ${c.taxId}</div>` : ''}
           ${c.phone ? `<div><strong>ติดต่อ:</strong> ${c.phone}</div>` : ''}
           ${c.address ? `<div style="white-space:pre-line; margin-top:2px;"><strong>ที่อยู่:</strong> ${c.address}</div>` : ''}
         </div>
         ${c.note ? `<div style="margin-top:6px; font-size:12.5px; color:var(--text-muted); background:#f8fafc; padding:8px; border-radius:6px; border:1px solid var(--border-color)">${c.note}</div>` : ''}
-        <div class="card-actions" style="margin-top:8px;">
-          <button class="icon-btn edit" onclick="editCustomer('${c.id}')"><i class="fa-solid fa-pen-to-square"></i> แก้ไข</button>
-          ${profile.role === 'admin' ? `<button class="icon-btn del" onclick="deleteCustomer('${c.id}')"><i class="fa-solid fa-trash"></i> ลบ</button>` : ''}
+        ${historyHtml}
+        <div class="card-actions" style="margin-top:8px; display:flex; gap:6px;">
+          <button class="icon-btn edit" onclick="editCustomer('${c.id}')" style="flex:1;"><i class="fa-solid fa-pen-to-square"></i> แก้ไข</button>
+          <button class="icon-btn" onclick="openRenewalModal('${c.id}')" style="flex:1.3; background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0;"><i class="fa-solid fa-arrows-rotate"></i> ต่ออายุสัญญา</button>
+          ${profile.role === 'admin' ? `<button class="icon-btn del" onclick="deleteCustomer('${c.id}')" style="flex:1;"><i class="fa-solid fa-trash"></i> ลบ</button>` : ''}
         </div>
       </div>
     `;
@@ -2455,6 +2626,36 @@ function initRealtimeListeners() {
     filterAndRenderQuotations();
     renderDashboardStats(tasksCache, projectsCache, customersCache, usersCache);
   });
+
+  // 6. Users snapshot listener (Real-time online status)
+  onSnapshot(collection(db, 'users'), (snap) => {
+    usersCache = snap.docs.map(d => ({ uid: d.id, ...d.data() }));
+    renderTeamMembers(usersCache, tasksCache);
+    
+    const filterAssignee = document.getElementById('filterAssignee');
+    if (filterAssignee) {
+      const selectedAssignee = filterAssignee.value;
+      filterAssignee.innerHTML = '<option value="">ทุกคนในทีม</option>' + 
+        usersCache.map(u => {
+          const statusChar = isUserOnline(u) ? '🟢 ' : '⚫ ';
+          return `<option value="${u.uid}">${statusChar}${u.name}</option>`;
+        }).join('');
+      filterAssignee.value = selectedAssignee;
+    }
+    
+    const calFilter = document.getElementById('calendarFilterAssignee');
+    if (calFilter) {
+      const selectedVal = calFilter.value;
+      calFilter.innerHTML = '<option value="">ทุกคนในทีม (ทั้งหมด)</option>' + 
+        usersCache.map(u => {
+          const statusChar = isUserOnline(u) ? '🟢 ' : '⚫ ';
+          return `<option value="${u.uid}">${statusChar}${u.name}</option>`;
+        }).join('');
+      calFilter.value = selectedVal;
+    }
+    
+    renderDashboardStats(tasksCache, projectsCache, customersCache, usersCache);
+  });
 }
 
 // ---------- RENDER VIEWS & CONTROLLERS ----------
@@ -2731,11 +2932,28 @@ function renderDashboardStats(tasks, projects, customers, users) {
       const d = daysUntil(t.dueDate);
       const daysText = d < 0 ? `เลยกำหนด ${Math.abs(d)} วัน` : (d === 0 ? 'ครบส่งวันนี้!' : `อีก ${d} วัน`);
       const timeClass = d < 0 ? 'badge urgent' : 'badge high';
+      
+      let assigneesList = [];
+      if (t.assignees && t.assignees.length > 0) {
+        assigneesList = t.assignees.map(uid => usersCache.find(u => u.uid === uid)).filter(Boolean);
+      } else if (t.assignee) {
+        const u = usersCache.find(x => x.uid === t.assignee);
+        if (u) assigneesList.push(u);
+      }
+      
+      const avatarsHtml = assigneesList.map(u => {
+        const uColor = getEmployeeColor(u.name);
+        return `<span class="avatar-initial" style="background:${uColor.border}; width:16px; height:16px; font-size:9px; color:#fff;" title="${u.name}">${getEmployeeInitials(u.name)}</span>`;
+      }).join('');
+      
       return `
         <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid var(--border-color)">
-          <div style="cursor:pointer;" onclick="openTaskDetailsModal('${t.id}')">
+          <div style="cursor:pointer; flex:1;" onclick="openTaskDetailsModal('${t.id}')">
             <strong style="color:var(--text-dark);">${t.title}</strong>
-            <div class="ts">เดดไลน์: ${t.dueDate}</div>
+            <div style="display:flex; align-items:center; gap:6px; margin-top:4px;">
+              <span class="ts" style="margin:0;">เดดไลน์: ${t.dueDate}</span>
+              <div style="display:flex; gap:2px; align-items:center;">${avatarsHtml}</div>
+            </div>
           </div>
           <span class="${timeClass}" style="font-size:10px">${daysText}</span>
         </div>
@@ -2876,14 +3094,16 @@ function renderTeamActivity(updates) {
   const recent = updates.slice(0, 5);
   box.innerHTML = recent.map(u => {
     const user = usersCache.find(x => x.uid === u.uid);
-    const initial = user ? user.name.charAt(0).toUpperCase() : '?';
+    const userName = user ? user.name : 'พนักงาน';
+    const uColor = getEmployeeColor(userName);
+    const initial = getEmployeeInitials(userName);
     return `
-      <div class="feed-item">
-        <div class="feed-avatar">${initial}</div>
-        <div class="feed-info">
-          <span class="feed-text"><strong>${user ? user.name : 'พนักงาน'}</strong> อัปเดตงาน:</span>
-          <span class="feed-text" style="color:var(--text-muted); font-size:12.5px; margin-top:2px;">"${u.text}"</span>
-          <span class="feed-time"><i class="fa-regular fa-clock"></i> ${u.date}</span>
+      <div class="feed-item" style="border-left: 3.5px solid ${uColor.border}; padding-left: 10px; margin-bottom: 10px; display: flex; align-items: start; gap: 10px; padding-top: 4px; padding-bottom: 4px;">
+        <div class="feed-avatar" style="background:${uColor.border}; color:#fff; font-size:10px; font-weight:700; display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:50%; flex-shrink:0;">${initial}</div>
+        <div class="feed-info" style="flex:1;">
+          <span class="feed-text"><strong style="color:${uColor.border}">${userName}</strong> อัปเดตงาน:</span>
+          <span class="feed-text" style="color:var(--text-muted); font-size:12.5px; margin-top:2px; display:block;">"${u.text}"</span>
+          <span class="feed-time" style="font-size:10.5px; color:var(--text-muted); margin-top:3px; display:block;"><i class="fa-regular fa-clock"></i> ${u.date}</span>
         </div>
       </div>
     `;
@@ -2908,12 +3128,24 @@ function renderTeamMembers(users, tasks) {
     const roleLabel = u.role === 'admin' ? 'หัวหน้า' : 'พนักงาน';
     const roleClass = u.role === 'admin' ? 'badge urgent' : 'badge planning';
     
+    const uColor = getEmployeeColor(u.name);
+    const initials = getEmployeeInitials(u.name);
+    const isOnline = isUserOnline(u);
+    
+    const onlineIndicator = isOnline 
+      ? `<span style="width: 8px; height: 8px; background: #22c55e; border-radius: 50%; display: inline-block; box-shadow: 0 0 8px #22c55e; margin-left: 6px;" title="ออนไลน์กำลังใช้งานระบบ"></span>`
+      : `<span style="width: 8px; height: 8px; background: #94a3b8; border-radius: 50%; display: inline-block; margin-left: 6px;" title="ออฟไลน์ (ใช้งานล่าสุด: ${formatLastActive(u.lastActive)})"></span>`;
+    
     return `
-      <div class="card" style="display:flex; justify-content:space-between; align-items:center; padding:12px 16px; margin-bottom:8px">
+      <div class="card" style="display:flex; justify-content:space-between; align-items:center; padding:12px 16px; margin-bottom:8px; border-left: 4px solid ${uColor.border};">
         <div onclick="viewEmployeeTasksAndHistory('${u.uid}', '${escapeHtml(u.name)}')" style="cursor:pointer; flex:1;" title="คลิกเพื่อดูงานของ ${u.name}">
-          <strong style="font-size:14px; color:var(--text-dark); text-decoration:underline; text-decoration-style:dotted;">${nameLabel}</strong>
-          <div class="ts">${u.email}</div>
-          <div style="margin-top:6px">
+          <div style="display:flex; align-items:center; gap:6px;">
+            <span class="avatar-initial" style="background:${uColor.border}; width:20px; height:20px; font-size:10px; color:#fff; display:inline-flex; align-items:center; justify-content:center; border-radius:50%;">${initial}</span>
+            <strong style="font-size:14px; color:${uColor.border}; text-decoration:underline; text-decoration-style:dotted;">${nameLabel}</strong>
+            ${onlineIndicator}
+          </div>
+          <div class="ts" style="margin-left: 26px;">${u.email}</div>
+          <div style="margin-top:6px; margin-left: 26px;">
             <span class="${roleClass}" style="padding:1px 6px; font-size:10px">${roleLabel}</span>
             <span class="badge inprog" style="padding:1px 6px; font-size:10px; margin-left:4px">${activeCount} งานค้าง</span>
           </div>
