@@ -781,6 +781,10 @@ window.openAddTaskModal = function(taskId = null) {
   if (taskId) {
     const t = tasksCache.find(x => x.id === taskId);
     if (!t) return;
+    if (t.isLocked && t.createdBy !== profile.uid && profile.role !== 'admin') {
+      alert('🔒 งานนี้ถูกล็อกไว้ ไม่สามารถแก้ไขได้');
+      return;
+    }
     editingTaskId = taskId;
     document.getElementById('modalTaskTitle').textContent = 'แก้ไขรายละเอียดงาน';
     document.getElementById('taskTitleInput').value = t.title || '';
@@ -791,6 +795,7 @@ window.openAddTaskModal = function(taskId = null) {
     document.getElementById('taskPrioritySelect').value = t.priority || 'mid';
     document.getElementById('taskDueInput').value = t.dueDate || '';
     document.getElementById('taskQuotationSelect').value = t.quotationId || '';
+    document.getElementById('taskLockedToggle').checked = !!t.isLocked;
     document.getElementById('taskSubmitBtnText').innerHTML = '<i class="fa-solid fa-check"></i> บันทึกการแก้ไข';
     
     // Check checkboxes
@@ -817,6 +822,7 @@ window.openAddTaskModal = function(taskId = null) {
     editingTaskId = null;
     document.getElementById('modalTaskTitle').textContent = 'เพิ่มงาน';
     document.getElementById('taskFormSubmit').reset();
+    document.getElementById('taskLockedToggle').checked = false;
     document.getElementById('taskSubmitBtnText').innerHTML = '<i class="fa-solid fa-plus"></i> เพิ่มงาน';
   }
   
@@ -881,11 +887,16 @@ document.getElementById('taskFormSubmit').addEventListener('submit', async (e) =
     quotationId: document.getElementById('taskQuotationSelect').value,
     links: getModalLinks(),
     imageData: currentTaskImageData,
+    isLocked: document.getElementById('taskLockedToggle').checked,
     updatedAt: serverTimestamp()
   };
   
   try {
     if (editingTaskId) {
+      const origTask = tasksCache.find(x => x.id === editingTaskId);
+      if (origTask && !origTask.createdBy) {
+        data.createdBy = origTask.assignee || profile.uid;
+      }
       await updateDoc(doc(db, 'tasks', editingTaskId), data);
       await logActivity(`แก้ไขรายละเอียดงาน "${data.title}"`);
     } else {
@@ -911,13 +922,84 @@ document.getElementById('taskFormSubmit').addEventListener('submit', async (e) =
 
 window.deleteTask = async (id) => {
   const t = tasksCache.find(x => x.id === id);
-  const taskTitle = t ? t.title : 'ไม่ระบุชื่องาน';
-  if (!confirm(`ลบงาน "${taskTitle}"?`)) return;
+  if (!t) return;
+  const taskTitle = t.title || 'ไม่ระบุชื่องาน';
+  
+  if (t.isLocked && t.createdBy !== profile.uid && profile.role !== 'admin') {
+    alert('🔒 งานนี้ถูกล็อกไว้ ไม่สามารถลบได้');
+    return;
+  }
+  
+  if (!confirm(`ย้ายงาน "${taskTitle}" ไปที่ถังขยะ?`)) return;
+  
   try {
-    await deleteDoc(doc(db, 'tasks', id));
-    await logActivity(`🗑️ ลบงาน "${taskTitle}"`);
+    await updateDoc(doc(db, 'tasks', id), {
+      isDeleted: true,
+      deletedAt: new Date().toISOString(),
+      deletedBy: profile.uid,
+      deletedByName: profile.name || 'พนักงาน'
+    });
+    await logActivity(`🗑️ ย้ายงาน "${taskTitle}" ไปยังถังขยะ`);
+    showToast('ย้ายงานไปที่ถังขยะแล้ว', 'success');
   } catch (err) {
     alert('เกิดข้อผิดพลาด: ' + err.message);
+  }
+};
+
+window.restoreTask = async (id) => {
+  const t = tasksCache.find(x => x.id === id);
+  if (!t) return;
+  
+  try {
+    await updateDoc(doc(db, 'tasks', id), {
+      isDeleted: false,
+      deletedAt: null,
+      deletedBy: null,
+      deletedByName: null
+    });
+    await logActivity(`🔄 กู้คืนงาน "${t.title}" จากถังขยะ`);
+    showToast('กู้คืนงานสำเร็จ', 'success');
+  } catch (err) {
+    alert('เกิดข้อผิดพลาด: ' + err.message);
+  }
+};
+
+window.permanentlyDeleteTask = async (id) => {
+  const t = tasksCache.find(x => x.id === id);
+  if (!t) return;
+  
+  if (profile.role !== 'admin') {
+    alert('🔒 เฉพาะแอดมินเท่านั้นที่สามารถลบงานถาวรได้');
+    return;
+  }
+  
+  if (!confirm(`⚠️ คำเตือน: คุณต้องการลบงาน "${t.title}" ออกจากระบบเป็นการถาวรใช่หรือไม่? (ไม่สามารถกู้คืนได้อีก)`)) return;
+  
+  try {
+    await deleteDoc(doc(db, 'tasks', id));
+    await logActivity(`🗑️ ลบงาน "${t.title}" ถาวรออกจากระบบ`);
+    showToast('ลบงานถาวรสำเร็จ', 'success');
+  } catch (err) {
+    alert('เกิดข้อผิดพลาด: ' + err.message);
+  }
+};
+
+window.unlockTaskDirect = async function() {
+  if (!activeDetailsTaskId) return;
+  const t = tasksCache.find(x => x.id === activeDetailsTaskId);
+  if (!t) return;
+  
+  if (t.createdBy !== profile.uid && profile.role !== 'admin') {
+    alert('🔒 คุณไม่มีสิทธิ์ปลดล็อกงานชิ้นนี้');
+    return;
+  }
+  
+  try {
+    await updateDoc(doc(db, 'tasks', activeDetailsTaskId), { isLocked: false });
+    await logActivity(`🔓 ปลดล็อกงาน "${t.title}"`);
+    showToast('ปลดล็อกงานสำเร็จ', 'success');
+  } catch (err) {
+    alert('เกิดข้อผิดพลาดในการปลดล็อก: ' + err.message);
   }
 };
 
@@ -940,6 +1022,46 @@ window.closeTaskDetailsModal = function() {
 function renderTaskDetailsModalContent(t) {
   document.getElementById('detTaskTitle').textContent = t.title || '';
   
+  // Lock Warning Box handling
+  const warningBox = document.getElementById('detTaskLockWarningBox');
+  const unlockBtn = document.getElementById('detTaskUnlockBtn');
+  if (warningBox) {
+    if (t.isLocked) {
+      warningBox.style.display = 'flex';
+      if (unlockBtn) {
+        if (t.createdBy === profile.uid || profile.role === 'admin') {
+          unlockBtn.style.display = 'inline-block';
+        } else {
+          unlockBtn.style.display = 'none';
+        }
+      }
+    } else {
+      warningBox.style.display = 'none';
+    }
+  }
+
+  // Update Status Dropdown inside Modal
+  const statusSelect = document.getElementById('detTaskStatusSelect');
+  const isAuthorized = !t.isLocked || t.createdBy === profile.uid || profile.role === 'admin';
+  if (statusSelect) {
+    statusSelect.value = t.status || 'notyet';
+    statusSelect.disabled = !isAuthorized;
+  }
+  
+  // Disable subtask adding if locked and not authorized
+  const subtaskInput = document.getElementById('newSubtaskText');
+  const subtaskBtn = document.querySelector('button[onclick="addNewSubtaskClick()"]');
+  if (subtaskInput) subtaskInput.disabled = !isAuthorized;
+  if (subtaskBtn) {
+    if (!isAuthorized) {
+      subtaskBtn.style.pointerEvents = 'none';
+      subtaskBtn.style.opacity = '0.5';
+    } else {
+      subtaskBtn.style.pointerEvents = 'auto';
+      subtaskBtn.style.opacity = '1';
+    }
+  }
+
   const pBadge = document.getElementById('detTaskPriorityBadge');
   pBadge.className = 'badge ' + (t.priority || 'mid');
   const prioLabels = { urgent: 'ด่วนที่สุด', high: 'สูง', mid: 'กลาง', low: 'ต่ำ' };
@@ -1025,11 +1147,15 @@ function renderSubtasksList(subtasks) {
     return;
   }
   
+  const t = activeDetailsTaskId ? tasksCache.find(x => x.id === activeDetailsTaskId) : null;
+  const isAuthorized = !t || !t.isLocked || t.createdBy === profile.uid || profile.role === 'admin';
+  const showDelBtn = isAuthorized ? '' : 'style="display:none;"';
+  
   list.innerHTML = subtasks.map((st, idx) => `
     <div class="subtask-item">
       <input type="checkbox" ${st.done ? 'checked' : ''} onchange="toggleSubtaskStatus(${idx}, this.checked)">
       <span class="subtask-text ${st.done ? 'completed' : ''}">${st.text}</span>
-      <button type="button" class="subtask-del" onclick="deleteSubtask(${idx})"><i class="fa-solid fa-trash-can"></i></button>
+      <button type="button" class="subtask-del" ${showDelBtn} onclick="deleteSubtask(${idx})"><i class="fa-solid fa-trash-can"></i></button>
     </div>
   `).join('');
   
@@ -2308,6 +2434,9 @@ window.openCreateQuotationForm = function() {
   editingQuotationId = null;
   document.getElementById('quotationFormTitle').textContent = 'ออกใบเสนอราคา';
   
+  const statusSelect = document.getElementById('qtStatusSelect');
+  if (statusSelect) statusSelect.value = 'pending';
+  
   const now = new Date();
   document.getElementById('qtDate').value = now.toISOString().slice(0, 10);
   document.getElementById('qtCode').value = 'QT-' + now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + String(now.getDate()).padStart(2, '0') + '-' + String(Date.now()).slice(-3);
@@ -2452,11 +2581,15 @@ document.getElementById('quotationForm').addEventListener('submit', async (e) =>
   
   const total = subtotal + vat - wht;
   
+  const statusSelect = document.getElementById('qtStatusSelect');
+  const status = statusSelect ? statusSelect.value : 'pending';
+  
   const id = editingQuotationId || ('qt_' + Date.now());
   const data = {
     type: 'quotation',
     code,
     date,
+    status,
     customerId,
     customerName,
     companyName,
@@ -2498,6 +2631,9 @@ window.editQuotation = function(qId) {
   document.getElementById('qtCode').value = q.code || '';
   document.getElementById('qtDate').value = q.date || '';
   
+  const qtStatusEl = document.getElementById('qtStatusSelect');
+  if (qtStatusEl) qtStatusEl.value = q.status || 'pending';
+  
   const datalist = document.getElementById('customersDatalist');
   if (datalist) {
     datalist.innerHTML = customersCache.map(c => `<option value="${c.name}"></option>`).join('');
@@ -2537,10 +2673,24 @@ function renderQuotations(quotations) {
   box.innerHTML = quotations.map(q => {
     const cust = customersCache.find(x => x.id === q.customerId);
     const grandTotal = Number(q.total) || 0;
+    
+    // Status Badge Configuration
+    const statusColors = {
+      pending: { text: 'รออนุมัติ', bg: '#fef3c7', color: '#b45309' },
+      approved: { text: 'อนุมัติแล้ว', bg: '#dcfce7', color: '#15803d' },
+      void: { text: 'ยกเลิก', bg: '#f1f5f9', color: '#475569' }
+    };
+    const statusInfo = statusColors[q.status || 'pending'] || statusColors.pending;
+    const statusBadge = `<span class="badge" style="background:${statusInfo.bg}; color:${statusInfo.color}; border:none; padding:2px 6px; font-size:11px; margin-left:6px; font-weight:700;">${statusInfo.text}</span>`;
+    
+    const contractBtn = q.status === 'approved'
+      ? `<button class="icon-btn" onclick="autoCreateContractFromQuotation('${q.id}')" style="background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0;"><i class="fa-solid fa-file-contract"></i> สร้างสัญญา</button>`
+      : '';
+      
     return `
       <div class="card">
         <div style="display:flex; justify-content:space-between; align-items:flex-start">
-          <strong style="font-size:14px;"><i class="fa-solid fa-file-invoice-dollar"></i> ${q.code || '-'}</strong>
+          <strong style="font-size:14px;"><i class="fa-solid fa-file-invoice-dollar"></i> ${q.code || '-'}${statusBadge}</strong>
           <span style="font-size:14px; font-weight:700; color:var(--primary-red)">฿${formatMoney(grandTotal)}</span>
         </div>
         <div class="ts">วันที่: ${q.date || '-'} · ลูกค้า: ${escapeHtml(q.customerName || (cust ? cust.name : '-'))}</div>
@@ -2550,6 +2700,7 @@ function renderQuotations(quotations) {
         <div class="card-actions">
           <button class="icon-btn edit" onclick="printQuotationDocument('${q.id}')"><i class="fa-solid fa-print"></i> พิมพ์ / PDF</button>
           <button class="icon-btn edit" onclick="editQuotation('${q.id}')"><i class="fa-solid fa-pen-to-square"></i> แก้ไข</button>
+          ${contractBtn}
           ${profile.role === 'admin' ? `<button class="icon-btn del" onclick="deleteQuotationRecord('${q.id}')"><i class="fa-solid fa-trash"></i> ลบ</button>` : ''}
         </div>
       </div>
@@ -2567,6 +2718,66 @@ window.deleteQuotationRecord = async (qId) => {
     await logActivity(`🗑️ ลบข้อมูลใบเสนอราคา หมายเลข "${qCode}" ของลูกค้า "${qCustName}"`);
   } catch (err) {
     alert('เกิดข้อผิดพลาด: ' + err.message);
+  }
+};
+
+window.autoCreateContractFromQuotation = function(quotationId) {
+  const q = quotationsCache.find(x => x.id === quotationId);
+  if (!q) return;
+  
+  // Find customer by name
+  const custName = (q.customerName || '').toLowerCase().trim();
+  const matchedCust = customersCache.find(c => (c.name || '').toLowerCase().trim() === custName);
+  
+  if (matchedCust) {
+    // Open renewal modal for existing customer
+    showPage('customers');
+    openRenewalModal(matchedCust.id);
+    
+    setTimeout(() => {
+      const select = document.getElementById('renewQuotationSelect');
+      if (select) {
+        select.value = `${q.id}|${q.code}`;
+      }
+      const dateEl = document.getElementById('renewEndDate');
+      if (dateEl) {
+        const oneYearLater = new Date();
+        oneYearLater.setFullYear(oneYearLater.getFullYear() + 1);
+        dateEl.value = oneYearLater.toISOString().slice(0, 10);
+      }
+      const noteEl = document.getElementById('renewNote');
+      if (noteEl) {
+        noteEl.value = `ต่อสัญญาอัตโนมัติจากใบเสนอราคา ${q.code} ยอดรวม ฿${formatMoney(q.total)}`;
+      }
+      showToast(`เปิดหน้าต่ออายุสัญญาสำหรับลูกค้า "${matchedCust.name}" สำเร็จ`, 'success');
+    }, 200);
+  } else {
+    // Fill customer create form for new customer
+    showPage('customers');
+    window.cancelEditCustomer();
+    
+    const custNameEl = document.getElementById('custName');
+    if (custNameEl) custNameEl.value = q.customerName || '';
+    
+    const custAddrEl = document.getElementById('custAddress');
+    if (custAddrEl) custAddrEl.value = q.companyAddress || '';
+    
+    const custEndDateEl = document.getElementById('custEndDate');
+    if (custEndDateEl) {
+      const oneYearLater = new Date();
+      oneYearLater.setFullYear(oneYearLater.getFullYear() + 1);
+      custEndDateEl.value = oneYearLater.toISOString().slice(0, 10);
+    }
+    
+    const noteEl = document.getElementById('custNote');
+    if (noteEl) {
+      noteEl.value = `สร้างคู่ค้าใหม่จากใบเสนอราคา ${q.code} ยอดรวม ฿${formatMoney(q.total)}`;
+    }
+    
+    const formEl = document.getElementById('customerForm');
+    if (formEl) formEl.scrollIntoView({ behavior: 'smooth' });
+    
+    showToast(`เตรียมแบบฟอร์มเพิ่มคู่ค้าใหม่ "${q.customerName}" สำเร็จ`, 'success');
   }
 };
 
@@ -2809,6 +3020,7 @@ function initRealtimeListeners() {
     tasksCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     
     filterAndRenderTasks();
+    renderRecycleBin();
     filterAndRenderCustomers(); // Update 360° dashboard counts on customer cards
     renderProjects(projectsCache); // re-render projects so task list updates inside cards
     renderDashboardStats(tasksCache, projectsCache, customersCache, usersCache);
@@ -2965,8 +3177,8 @@ window.filterAndRenderTasks = function() {
   const uids = visibleUids();
   let list = uids ? tasksCache.filter(t => {
     const isAssigned = t.assignees ? t.assignees.includes(profile.uid) : (t.assignee === profile.uid);
-    return isAssigned;
-  }) : [...tasksCache];
+    return isAssigned && !t.isDeleted;
+  }) : tasksCache.filter(t => !t.isDeleted);
   
   if (queryText) {
     list = list.filter(t => t.title.toLowerCase().includes(queryText) || (t.description && t.description.toLowerCase().includes(queryText)));
@@ -2982,6 +3194,36 @@ window.filterAndRenderTasks = function() {
   }
   if (priorityFilter) {
     list = list.filter(t => t.priority === priorityFilter);
+  }
+  
+  // Sort tasks
+  const sortTasksEl = document.getElementById('sortTasks');
+  const sortVal = sortTasksEl ? sortTasksEl.value : 'created';
+  if (sortVal === 'created') {
+    list.sort((a, b) => {
+      const dateA = a.createdAt?.seconds ? a.createdAt.seconds * 1000 : (a.createdAt ? new Date(a.createdAt).getTime() : 0);
+      const dateB = b.createdAt?.seconds ? b.createdAt.seconds * 1000 : (b.createdAt ? new Date(b.createdAt).getTime() : 0);
+      return dateB - dateA;
+    });
+  } else if (sortVal === 'dueAsc') {
+    list.sort((a, b) => {
+      if (!a.dueDate) return 1;
+      if (!b.dueDate) return -1;
+      return new Date(a.dueDate) - new Date(b.dueDate);
+    });
+  } else if (sortVal === 'dueDesc') {
+    list.sort((a, b) => {
+      if (!a.dueDate) return 1;
+      if (!b.dueDate) return -1;
+      return new Date(b.dueDate) - new Date(a.dueDate);
+    });
+  } else if (sortVal === 'priority') {
+    const priorityWeights = { urgent: 4, high: 3, mid: 2, low: 1 };
+    list.sort((a, b) => {
+      const weightA = priorityWeights[a.priority] || 0;
+      const weightB = priorityWeights[b.priority] || 0;
+      return weightB - weightA;
+    });
   }
   
   if (currentTaskView === 'kanban') {
@@ -3031,8 +3273,8 @@ window.applyQuickFilter = function(filterType) {
   const uids = visibleUids();
   let list = uids ? tasksCache.filter(t => {
     const isAssigned = t.assignees ? t.assignees.includes(profile.uid) : (t.assignee === profile.uid);
-    return isAssigned;
-  }) : [...tasksCache];
+    return isAssigned && !t.isDeleted;
+  }) : tasksCache.filter(t => !t.isDeleted);
   
   if (filterType === 'notyet') {
     list = list.filter(t => t.status === 'notyet');
@@ -3063,6 +3305,52 @@ window.applyQuickFilter = function(filterType) {
   }
 };
 
+window.renderRecycleBin = function() {
+  const tbody = document.getElementById('recycleBinTableBody');
+  if (!tbody) return;
+  
+  const deletedTasks = tasksCache.filter(t => t.isDeleted === true);
+  
+  if (deletedTasks.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="4" style="padding:15px; text-align:center; color:var(--text-muted);">ไม่มีงานที่ถูกลบในระบบ</td>
+      </tr>
+    `;
+    return;
+  }
+  
+  // Sort by deletedAt desc
+  deletedTasks.sort((a, b) => new Date(b.deletedAt || 0) - new Date(a.deletedAt || 0));
+  
+  tbody.innerHTML = deletedTasks.map(t => {
+    const deletedDate = t.deletedAt ? new Date(t.deletedAt).toLocaleDateString('th-TH') + ' ' + new Date(t.deletedAt).toLocaleTimeString('th-TH', {hour:'2-digit', minute:'2-digit'}) : '-';
+    const deletedByName = t.deletedByName || 'ไม่ระบุ';
+    
+    // Check if the current user is the owner or an admin
+    const canRestore = t.createdBy === profile.uid || profile.role === 'admin';
+    const restoreBtn = canRestore 
+      ? `<button class="btn btn-sm btn-ghost" onclick="restoreTask('${t.id}')" style="color:#059669; border-color:#a7f3d0; background:#ecfdf5; padding:4px 8px; font-size:12px; margin-right:6px;"><i class="fa-solid fa-rotate-left"></i> กู้คืน</button>`
+      : `<span style="font-size:11px; color:var(--text-muted); margin-right:6px;">🔒 ล็อก</span>`;
+      
+    const deleteBtn = profile.role === 'admin'
+      ? `<button class="btn btn-sm btn-ghost" onclick="permanentlyDeleteTask('${t.id}')" style="color:#dc2626; border-color:#fecaca; background:#fef2f2; padding:4px 8px; font-size:12px;"><i class="fa-solid fa-trash-can"></i> ลบถาวร</button>`
+      : '';
+      
+    return `
+      <tr>
+        <td style="padding:10px; font-weight:600; color:var(--text-dark);">${t.title}</td>
+        <td style="padding:10px; color:#475569;">${deletedByName}</td>
+        <td style="padding:10px; color:var(--text-muted);">${deletedDate}</td>
+        <td style="padding:10px; text-align:center;">
+          ${restoreBtn}
+          ${deleteBtn}
+        </td>
+      </tr>
+    `;
+  }).join('');
+};
+
 window.filterAndRenderQuotations = function() {
   const searchInput = document.getElementById('quotationSearch');
   const queryText = searchInput ? searchInput.value.toLowerCase().trim() : '';
@@ -3091,7 +3379,13 @@ function renderTasksList(tasks) {
     const namesLabel = assignedUsers.map(u => u.name).join(', ') || '-';
     
     const proj = projectsCache.find(x => x.id === t.projectId);
-    const canEdit = profile.role === 'admin' || (t.assignees ? t.assignees.includes(profile.uid) : (t.assignee === profile.uid));
+    
+    // Auth checks for Locked task
+    const isAuthorized = !t.isLocked || t.createdBy === profile.uid || profile.role === 'admin';
+    const canEdit = (profile.role === 'admin' || (t.assignees ? t.assignees.includes(profile.uid) : (t.assignee === profile.uid))) && isAuthorized;
+    const canDelete = (profile.role === 'admin' || t.createdBy === profile.uid) && isAuthorized;
+    
+    const lockIcon = t.isLocked ? '<i class="fa-solid fa-lock" style="color:#ef4444; font-size:11px; margin-left:6px;" title="งานนี้ถูกล็อกป้องกันแก้ไข/ลบ"></i>' : '';
     const prioClass = t.priority || 'mid';
     const prioLabel = { urgent: 'ด่วนที่สุด', high: 'สูง', mid: 'กลาง', low: 'ต่ำ' }[prioClass];
     const statusLabel = { notyet: 'ยังไม่เริ่ม', inprog: 'กำลังทำ', done: 'เสร็จแล้ว' }[t.status];
@@ -3134,7 +3428,7 @@ function renderTasksList(tasks) {
     return `
       <div class="card task-card ${prioClass}" onclick="openTaskDetailsModal('${t.id}')">
         <div class="task-card-header">
-          <span class="task-card-title">${t.title}</span>
+          <span class="task-card-title">${t.title}${lockIcon}</span>
           <span class="badge ${t.status}">${statusLabel}</span>
         </div>
         <div class="task-card-meta">
@@ -3148,7 +3442,7 @@ function renderTasksList(tasks) {
         <div class="card-actions" onclick="event.stopPropagation()">
           <button class="icon-btn" onclick="shareTaskToLineCard('${t.id}')" style="background:#06c755; color:#fff;" title="แชร์ลง LINE"><i class="fa-brands fa-line"></i> LINE</button>
           ${canEdit ? `<button class="icon-btn edit" onclick="openAddTaskModal('${t.id}')"><i class="fa-solid fa-pen-to-square"></i> แก้ไข</button>` : ''}
-          ${profile.role === 'admin' ? `<button class="icon-btn del" onclick="deleteTask('${t.id}')"><i class="fa-solid fa-trash"></i> ลบ</button>` : ''}
+          ${canDelete ? `<button class="icon-btn del" onclick="deleteTask('${t.id}')"><i class="fa-solid fa-trash"></i> ลบ</button>` : ''}
         </div>
       </div>
     `;
@@ -3194,21 +3488,26 @@ function renderTaskKanban(tasks) {
         }
       }
       
+      const isAuthorized = !t.isLocked || t.createdBy === profile.uid || profile.role === 'admin';
+      const lockIcon = t.isLocked ? '<i class="fa-solid fa-lock" style="color:#ef4444; font-size:11px; margin-left:4px;" title="งานนี้ถูกล็อกป้องกันแก้ไข/ลบ"></i>' : '';
+      
       let actionButtons = '';
-      if (t.status === 'notyet') {
-        actionButtons = `<button type="button" class="kanban-action-btn move-next" onclick="event.stopPropagation(); updateTaskStatusDirect('${t.id}', 'inprog')">เริ่มงาน <i class="fa-solid fa-arrow-right"></i></button>`;
-      } else if (t.status === 'inprog') {
-        actionButtons = `
-          <button type="button" class="kanban-action-btn" onclick="event.stopPropagation(); updateTaskStatusDirect('${t.id}', 'notyet')"><i class="fa-solid fa-arrow-left"></i> ดึงกลับ</button>
-          <button type="button" class="kanban-action-btn move-next" onclick="event.stopPropagation(); updateTaskStatusDirect('${t.id}', 'done')">เสร็จงาน <i class="fa-solid fa-arrow-right"></i></button>
-        `;
-      } else if (t.status === 'done') {
-        actionButtons = `<button type="button" class="kanban-action-btn" onclick="event.stopPropagation(); updateTaskStatusDirect('${t.id}', 'inprog')"><i class="fa-solid fa-arrow-left"></i> ย้ายกลับมาทำ</button>`;
+      if (isAuthorized) {
+        if (t.status === 'notyet') {
+          actionButtons = `<button type="button" class="kanban-action-btn move-next" onclick="event.stopPropagation(); updateTaskStatusDirect('${t.id}', 'inprog')">เริ่มงาน <i class="fa-solid fa-arrow-right"></i></button>`;
+        } else if (t.status === 'inprog') {
+          actionButtons = `
+            <button type="button" class="kanban-action-btn" onclick="event.stopPropagation(); updateTaskStatusDirect('${t.id}', 'notyet')"><i class="fa-solid fa-arrow-left"></i> ดึงกลับ</button>
+            <button type="button" class="kanban-action-btn move-next" onclick="event.stopPropagation(); updateTaskStatusDirect('${t.id}', 'done')">เสร็จงาน <i class="fa-solid fa-arrow-right"></i></button>
+          `;
+        } else if (t.status === 'done') {
+          actionButtons = `<button type="button" class="kanban-action-btn" onclick="event.stopPropagation(); updateTaskStatusDirect('${t.id}', 'inprog')"><i class="fa-solid fa-arrow-left"></i> ย้ายกลับมาทำ</button>`;
+        }
       }
       
       return `
         <div class="kanban-card ${prioClass}" style="border-left-color: ${prioClass === 'urgent' ? 'var(--urgent-color)' : prioClass === 'high' ? 'var(--high-color)' : prioClass === 'mid' ? 'var(--medium-color)' : 'var(--low-color)'};" onclick="openTaskDetailsModal('${t.id}')">
-          <div class="kanban-card-title">${escapeHtml(t.title)}</div>
+          <div class="kanban-card-title">${escapeHtml(t.title)}${lockIcon}</div>
           
           <div class="kanban-card-meta" style="margin-top:2px;">
             <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:180px;"><i class="fa-solid fa-folder"></i> ${proj ? proj.name : '-'}</div>
