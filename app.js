@@ -345,6 +345,9 @@ async function loadSettings() {
   const companyPanel = document.getElementById('companySettingsPanel');
   if (companyPanel) companyPanel.style.display = profile.role === 'admin' ? 'block' : 'none';
   
+  const dbPanel = document.getElementById('databaseManagementPanel');
+  if (dbPanel) dbPanel.style.display = profile.role === 'admin' ? 'block' : 'none';
+  
   // Load dynamic Categories
   const catSnap = await getDoc(doc(db, 'settings', 'categories'));
   if (catSnap.exists()) {
@@ -4560,5 +4563,337 @@ window.clickGlobalSearchResult = function(type, id) {
     }, 200);
   } else if (type === 'quotation') {
     showPage('quotations');
+  }
+};
+
+// ================= DATABASE BACKUP & MANAGEMENT (v4.7) =================
+
+// Helper function to fetch all documents from a Firestore collection
+async function fetchAllDocs(collectionName) {
+  const q = query(collection(db, collectionName));
+  const snap = await getDocs(q);
+  return snap.docs.map(d => ({ id: d.id, data: d.data() }));
+}
+
+// Function to trigger file download of data
+function downloadJsonFile(dataObj, filename) {
+  const jsonStr = JSON.stringify(dataObj, null, 2);
+  const blob = new Blob([jsonStr], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// Global Export Backup function
+window.handleExportBackupClick = async function(isSilent = false) {
+  if (!profile || profile.role !== 'admin') {
+    alert("❌ คุณไม่มีสิทธิ์เข้าถึงส่วนนี้");
+    return null;
+  }
+  
+  try {
+    if (!isSilent) {
+      console.log("Starting manual backup export...");
+    }
+    
+    // Fetch all major collections
+    const customers = await fetchAllDocs('customers');
+    const projects = await fetchAllDocs('projects');
+    const tasks = await fetchAllDocs('tasks');
+    const dailyUpdates = await fetchAllDocs('dailyUpdates');
+    
+    // Fetch settings that are quotations
+    const qSettings = query(collection(db, 'settings'), where('type', '==', 'quotation'));
+    const snapSettings = await getDocs(qSettings);
+    const quotations = snapSettings.docs.map(d => ({ id: d.id, data: d.data() }));
+    
+    const backupData = {
+      version: "4.7",
+      exportedAt: new Date().toISOString(),
+      exportedBy: profile.name,
+      collections: {
+        customers,
+        projects,
+        tasks,
+        dailyUpdates,
+        quotations
+      }
+    };
+    
+    const dateStr = new Date().toISOString().split('T')[0];
+    const filename = `asg_work_backup_${dateStr}.json`;
+    
+    downloadJsonFile(backupData, filename);
+    
+    if (!isSilent) {
+      alert(`✅ ดาวน์โหลดไฟล์สำรองข้อมูล "${filename}" เรียบร้อยแล้วครับ!`);
+      await logActivity(`💾 ดาวน์โหลดไฟล์สำรองข้อมูลระบบโดยหัวหน้างาน "${profile.name}"`);
+    }
+    
+    return backupData;
+  } catch (error) {
+    console.error("Backup export error:", error);
+    if (!isSilent) {
+      alert("❌ เกิดข้อผิดพลาดในการสำรองข้อมูล: " + error.message);
+    }
+    return null;
+  }
+};
+
+// Variable to temporarily store parsed import data for preview
+let parsedImportData = null;
+
+// Global Import File Change function (reads and validates file)
+window.handleImportFileChange = function(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const dataObj = JSON.parse(e.target.result);
+      
+      // 1. Validator: Check structure
+      if (!dataObj || typeof dataObj !== 'object' || !dataObj.collections) {
+        throw new Error("โครงสร้างไฟล์ข้อมูลสำรองไม่ถูกต้อง (ไม่พบฟิลด์ collections)");
+      }
+      
+      const cols = dataObj.collections;
+      if (!cols.customers || !cols.projects || !cols.tasks || !cols.dailyUpdates) {
+        throw new Error("โครงสร้างไฟล์ข้อมูลสำรองไม่ครบถ้วน (ขาดคอลเลกชันหลัก)");
+      }
+      
+      // Store globally for confirmation
+      parsedImportData = dataObj;
+      
+      // 2. Data Preview: render stats
+      const previewArea = document.getElementById('backupPreviewArea');
+      const previewStats = document.getElementById('backupPreviewStats');
+      
+      if (previewArea && previewStats) {
+        const cCount = cols.customers.length;
+        const pCount = cols.projects.length;
+        const tCount = cols.tasks.length;
+        const dCount = cols.dailyUpdates.length;
+        const qCount = cols.quotations ? cols.quotations.length : 0;
+        
+        previewStats.innerHTML = `
+          <div>👥 ลูกค้า: <strong>${cCount}</strong> รายการ</div>
+          <div>📂 โครงการ: <strong>${pCount}</strong> บอร์ด</div>
+          <div>📝 งานย่อย: <strong>${tCount}</strong> ชิ้น</div>
+          <div>💬 บันทึกรายวัน: <strong>${dCount}</strong> แชท</div>
+          <div>💰 ใบเสนอราคา: <strong>${qCount}</strong> ใบ</div>
+          <div style="grid-column: 1 / -1; margin-top:6px; color:#475569; font-size:11px;">
+            สร้างโดย: <strong>${dataObj.exportedBy || 'ไม่ระบุ'}</strong> เมื่อ: <strong>${new Date(dataObj.exportedAt).toLocaleString('th-TH')}</strong>
+          </div>
+        `;
+        
+        previewArea.style.display = 'block';
+      }
+      
+    } catch (err) {
+      console.error("Import file parse error:", err);
+      alert("❌ ไฟล์ไม่ถูกต้อง: " + err.message);
+      // Reset file input
+      event.target.value = '';
+      parsedImportData = null;
+      document.getElementById('backupPreviewArea').style.display = 'none';
+    }
+  };
+  
+  reader.readAsText(file);
+};
+
+// Global Cancel Restore function
+window.handleCancelRestoreClick = function() {
+  parsedImportData = null;
+  const fileInput = document.getElementById('importBackupFileInput');
+  if (fileInput) fileInput.value = '';
+  const previewArea = document.getElementById('backupPreviewArea');
+  if (previewArea) previewArea.style.display = 'none';
+};
+
+// Helper function to send notification to LINE OA Group
+async function sendLineBackupLog(actionName, detailsMsg) {
+  if (!settings.lineNotifyUrl || !settings.lineNotifyToken || !settings.lineGroupId) {
+    console.log("LINE settings incomplete, skipping LINE log notification");
+    return;
+  }
+  
+  const msg = `🛡️ [ระบบความปลอดภัยข้อมูล ASG WORK]\n` +
+              `⚙️ กิจกรรม: ${actionName}\n` +
+              `👤 ดำเนินการโดย: ${profile.name}\n` +
+              `${detailsMsg}\n` +
+              `📅 วันที่: ${new Date().toLocaleString('th-TH')}`;
+              
+  const targetUrl = new URL(settings.lineNotifyUrl);
+  targetUrl.searchParams.set('token', settings.lineNotifyToken);
+  targetUrl.searchParams.set('groupId', settings.lineGroupId);
+  targetUrl.searchParams.set('message', msg);
+  
+  try {
+    await fetch(targetUrl.toString(), {
+      method: 'GET',
+      mode: 'no-cors'
+    });
+    console.log("LINE log notification sent successfully");
+  } catch (err) {
+    console.error("Failed to send LINE log notification:", err);
+  }
+}
+
+// Global Confirm Restore function
+window.handleConfirmRestoreClick = async function() {
+  if (!profile || profile.role !== 'admin') {
+    alert("❌ คุณไม่มีสิทธิ์เข้าถึงส่วนนี้");
+    return;
+  }
+  
+  if (!parsedImportData) {
+    alert("❌ ไม่พบข้อมูลสำหรับกู้คืน");
+    return;
+  }
+  
+  const confirmRestore = confirm("🚨 คุณยืนยันที่จะเขียนทับข้อมูลในระบบด้วยไฟล์สำรองนี้ใช่หรือไม่?\n\nข้อมูลกู้คืนจะเริ่มโหลดลง Firestore ทันที!");
+  if (!confirmRestore) return;
+  
+  const btn = document.getElementById('btnConfirmRestore');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> กำลังกู้คืนข้อมูล...';
+  }
+  
+  try {
+    const cols = parsedImportData.collections;
+    
+    // Function to write all docs from backup array into collection
+    const restoreCollection = async (collectionName, docsArray) => {
+      const promises = docsArray.map(docItem => 
+        setDoc(doc(db, collectionName, docItem.id), docItem.data)
+      );
+      await Promise.all(promises);
+    };
+    
+    // Restore each collection
+    await restoreCollection('customers', cols.customers);
+    await restoreCollection('projects', cols.projects);
+    await restoreCollection('tasks', cols.tasks);
+    await restoreCollection('dailyUpdates', cols.dailyUpdates);
+    
+    if (cols.quotations) {
+      await restoreCollection('settings', cols.quotations);
+    }
+    
+    const detailsMsg = `📊 นำเข้าสถิติ:\n` +
+                       `- ลูกค้า: ${cols.customers.length} รายการ\n` +
+                       `- โครงการ: ${cols.projects.length} โครงการ\n` +
+                       `- งานย่อย: ${cols.tasks.length} งาน\n` +
+                       `- บันทึกรายวัน: ${cols.dailyUpdates.length} รายการ\n` +
+                       `- ใบเสนอราคา: ${cols.quotations ? cols.quotations.length : 0} ใบ`;
+                       
+    await logActivity(`🚨 กู้คืนประวัติและฐานข้อมูลระบบทั้งหมดจากไฟล์สำรองโดยหัวหน้างาน "${profile.name}"`);
+    await sendLineBackupLog("กู้คืนข้อมูลระบบ (Database Restored)", detailsMsg);
+    
+    alert("✅ กู้คืนข้อมูลระบบเสร็จเรียบร้อยแล้วครับ! หน้าเว็บจะรีเฟรชตัวเองทันที");
+    window.location.reload();
+  } catch (error) {
+    console.error("Restore confirm error:", error);
+    alert("❌ เกิดข้อผิดพลาดระหว่างกู้คืนข้อมูล: " + error.message);
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = "✅ เริ่มทำการกู้คืนข้อมูล";
+    }
+  }
+};
+
+// Global Clear Database function
+window.handleClearDatabaseClick = async function() {
+  if (!profile || profile.role !== 'admin') {
+    alert("❌ คุณไม่มีสิทธิ์ดำเนินการล้างข้อมูล");
+    return;
+  }
+  
+  const clearCustomers = document.getElementById('clearSelectCustomers').checked;
+  const clearProjects = document.getElementById('clearSelectProjects').checked;
+  const clearTasks = document.getElementById('clearSelectTasks').checked;
+  const clearDailyUpdates = document.getElementById('clearSelectDailyUpdates').checked;
+  const clearQuotations = document.getElementById('clearSelectQuotations').checked;
+  
+  if (!clearCustomers && !clearProjects && !clearTasks && !clearDailyUpdates && !clearQuotations) {
+    alert("⚠️ กรุณาเลือกประเภทข้อมูลที่ต้องการล้างอย่างน้อย 1 รายการครับ");
+    return;
+  }
+  
+  // 1. Confirm dialog 1
+  const confirm1 = confirm("🚨 คุณแน่ใจหรือไม่ที่จะล้างข้อมูลส่วนที่เลือกออกทั้งหมดอย่างถาวร?\n\nข้อมูลเหล่านี้จะหายไปทั้งหมดและไม่สามารถกู้คืนได้!");
+  if (!confirm1) return;
+  
+  // 2. Confirm dialog 2
+  const confirm2 = confirm("🚨 ยืนยันอีกครั้งขั้นสุดท้าย: ข้อมูลจะถูกลบจริง ระบบจะทำการบันทึกไฟล์สำรองข้อมูลดาวน์โหลดลงเครื่องของท่านเก็บไว้ให้อัตโนมัติก่อนเริ่มลบข้อมูล");
+  if (!confirm2) return;
+  
+  const btn = document.getElementById('btnDangerClearAll');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> กำลังดำเนินการล้างระบบ...';
+  }
+  
+  try {
+    // Failsafe: Run auto-export backup first
+    console.log("Failsafe: Exporting auto backup before clearing...");
+    await handleExportBackupClick(true);
+    
+    const deleteColDocs = async (collectionName) => {
+      const q = query(collection(db, collectionName));
+      const snap = await getDocs(q);
+      const promises = snap.docs.map(docItem => deleteDoc(docItem.ref));
+      await Promise.all(promises);
+      return snap.docs.length;
+    };
+    
+    let deletedDetails = [];
+    
+    if (clearCustomers) {
+      const count = await deleteColDocs('customers');
+      deletedDetails.push(`- ลบข้อมูลลูกค้า: ${count} รายการ`);
+    }
+    if (clearProjects) {
+      const count = await deleteColDocs('projects');
+      deletedDetails.push(`- ลบข้อมูลโครงการ: ${count} โครงการ`);
+    }
+    if (clearTasks) {
+      const count = await deleteColDocs('tasks');
+      deletedDetails.push(`- ลบข้อมูลงานย่อย: ${count} งาน`);
+    }
+    if (clearDailyUpdates) {
+      const count = await deleteColDocs('dailyUpdates');
+      deletedDetails.push(`- ลบข้อมูลบันทึกงานรายวัน: ${count} รายการ`);
+    }
+    if (clearQuotations) {
+      const qSettings = query(collection(db, 'settings'), where('type', '==', 'quotation'));
+      const snapSettings = await getDocs(qSettings);
+      const promises = snapSettings.docs.map(docItem => deleteDoc(docItem.ref));
+      await Promise.all(promises);
+      deletedDetails.push(`- ลบเอกสารใบเสนอราคา: ${snapSettings.docs.length} ใบ`);
+    }
+    
+    const detailsMsg = `🗑️ รายละเอียดการล้างข้อมูล:\n` + deletedDetails.join('\n');
+    await logActivity(`🚨 ดำเนินการล้างฐานข้อมูลระบบในส่วนที่เลือกโดยหัวหน้างาน "${profile.name}"`);
+    await sendLineBackupLog("ล้างข้อมูลระบบ (Database Cleared)", detailsMsg);
+    
+    alert("✅ ดำเนินการล้างข้อมูลระบบส่วนที่เลือกสำเร็จเรียบร้อยแล้วครับ! หน้าเว็บจะรีเฟรชตัวเองทันที");
+    window.location.reload();
+  } catch (err) {
+    console.error("Clear database error:", err);
+    alert("❌ เกิดข้อผิดพลาดระหว่างล้างระบบ: " + err.message);
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fa-solid fa-trash-can"></i> ล้างข้อมูลส่วนที่เลือก';
+    }
   }
 };
