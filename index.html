@@ -692,6 +692,66 @@
       </form>
     </div>
 
+    <!-- Database Management Panel (Admin only) -->
+    <div class="card" id="databaseManagementPanel" style="display:none; border: 1px solid var(--border-color);">
+      <h3 style="font-size:15px; font-weight:700; margin-bottom:12px; color:#1e293b;"><i class="fa-solid fa-database"></i> ระบบสำรองและจัดการฐานข้อมูล (Database Management)</h3>
+      <p class="ts" style="margin-bottom:16px;">เฉพาะระดับแอดมิน (หัวหน้างาน) เท่านั้นที่สามารถดาวน์โหลดไฟล์สำรองข้อมูล กู้คืน หรือสั่งล้างข้อมูลในระบบได้</p>
+      
+      <!-- Backup and Restore Actions -->
+      <div style="display:flex; flex-wrap:wrap; gap:12px; margin-bottom:20px;">
+        <button type="button" class="btn btn-sm" onclick="handleExportBackupClick()" style="background-color: #0284c7; color:white; font-size:12.5px; padding:8px 16px; border:none; border-radius:6px; font-weight:bold; display:flex; align-items:center; gap:6px; cursor:pointer;">
+          <i class="fa-solid fa-download"></i> ดาวน์โหลดไฟล์สำรองข้อมูล (Export JSON)
+        </button>
+        
+        <label class="btn btn-sm" style="background-color: #10b981; color:white; font-size:12.5px; padding:8px 16px; border:none; border-radius:6px; font-weight:bold; cursor:pointer; display:flex; align-items:center; gap:6px; margin:0;">
+          <i class="fa-solid fa-upload"></i> อัปโหลดไฟล์เพื่อกู้คืน (Import JSON)
+          <input type="file" id="importBackupFileInput" accept=".json" onchange="handleImportFileChange(event)" style="display:none;">
+        </label>
+      </div>
+
+      <!-- Data Preview Area (Hidden by default) -->
+      <div id="backupPreviewArea" style="display:none; padding:15px; border-radius:8px; background-color:#f8fafc; border:1px solid #e2e8f0; margin-bottom:20px;">
+        <h4 style="font-size:13px; font-weight:700; color:#0f172a; margin-top:0; margin-bottom:10px;"><i class="fa-solid fa-magnifying-glass-chart"></i> ผลการตรวจสอบไฟล์กู้คืน:</h4>
+        <div id="backupPreviewStats" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap:10px; font-size:12px; color:#475569; margin-bottom:12px;"></div>
+        <div style="display:flex; gap:8px;">
+          <button type="button" class="btn btn-success btn-sm" id="btnConfirmRestore" onclick="handleConfirmRestoreClick()" style="padding:6px 12px; font-size:12px; background-color:#10b981; border-color:#10b981; color:white; font-weight:bold; border-radius:4px; cursor:pointer;">✅ เริ่มทำการกู้คืนข้อมูล</button>
+          <button type="button" class="btn btn-sm" onclick="handleCancelRestoreClick()" style="background-color:#e2e8f0; color:#475569; padding:6px 12px; font-size:12px; border:none; border-radius:4px; font-weight:bold; cursor:pointer;">ยกเลิก</button>
+        </div>
+      </div>
+
+      <!-- Danger Reset Zone -->
+      <div style="border-top: 2px dashed #f87171; padding-top: 15px; margin-top: 15px;">
+        <h4 style="font-size: 13.5px; font-weight: 700; color: #dc2626; margin-top:0; margin-bottom: 8px; display:flex; align-items:center; gap:6px;">
+          <i class="fa-solid fa-triangle-exclamation"></i> พื้นที่อันตราย: ล้างข้อมูลระบบ (Danger Zone)
+        </h4>
+        <p style="font-size: 11.5px; color: var(--text-muted); margin-bottom: 12px; line-height: 1.4;">
+          เลือกประเภทข้อมูลที่ต้องการล้างออกอย่างถาวรจากฐานข้อมูล (ระบบจะบังคับสำรองข้อมูลตัวเก่าดาวน์โหลดลงเครื่องของท่านก่อนลบเสมอเพื่อความปลอดภัย):
+        </p>
+        
+        <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:15px; font-size:12.5px;">
+          <label style="display:flex; align-items:center; gap:8px; font-weight:normal; cursor:pointer;">
+            <input type="checkbox" id="clearSelectCustomers" style="width:15px; height:15px; accent-color:#dc2626;"> 👥 รายชื่อลูกค้าและคู่สัญญา (Customers)
+          </label>
+          <label style="display:flex; align-items:center; gap:8px; font-weight:normal; cursor:pointer;">
+            <input type="checkbox" id="clearSelectProjects" style="width:15px; height:15px; accent-color:#dc2626;"> 📂 โครงการหลักทั้งหมด (Projects)
+          </label>
+          <label style="display:flex; align-items:center; gap:8px; font-weight:normal; cursor:pointer;">
+            <input type="checkbox" id="clearSelectTasks" style="width:15px; height:15px; accent-color:#dc2626;"> 📝 งานย่อยและบอร์ดคัมบัง (Tasks)
+          </label>
+          <label style="display:flex; align-items:center; gap:8px; font-weight:normal; cursor:pointer;">
+            <input type="checkbox" id="clearSelectDailyUpdates" style="width:15px; height:15px; accent-color:#dc2626;"> 💬 บันทึกและประวัติการทำงานรายวัน (Daily Updates)
+          </label>
+          <label style="display:flex; align-items:center; gap:8px; font-weight:normal; cursor:pointer;">
+            <input type="checkbox" id="clearSelectQuotations" style="width:15px; height:15px; accent-color:#dc2626;"> 💰 เอกสารและประวัติใบเสนอราคา (Quotations)
+          </label>
+        </div>
+
+        <button type="button" class="btn btn-danger btn-sm" id="btnDangerClearAll" onclick="handleClearDatabaseClick()" style="background-color: #dc2626; border-color: #dc2626; color:white; padding:8px 16px; font-weight:bold; border:none; border-radius:6px; cursor:pointer;">
+          <i class="fa-solid fa-trash-can"></i> ล้างข้อมูลส่วนที่เลือก
+        </button>
+      </div>
+    </div>
+
     <!-- Recycle Bin Panel (Task Soft Deleted items) -->
     <div class="card" id="recycleBinPanel">
       <h3 style="font-size:15px; font-weight:700; margin-bottom:15px; color:#b91c1c;"><i class="fa-solid fa-trash-can"></i> ถังขยะกู้คืนงานย่อย (Recycle Bin)</h3>
