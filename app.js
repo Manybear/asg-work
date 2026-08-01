@@ -157,19 +157,17 @@ window.sendLineNotify = async function(msg) {
   if (!settings.lineNotifyUrl || !settings.lineNotifyToken || !settings.lineGroupId) return;
   try {
     console.log("Sending LINE message to proxy...");
-    await fetch(settings.lineNotifyUrl, {
-      method: 'POST',
-      mode: 'no-cors',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded'
-      },
-      body: new URLSearchParams({
-        token: settings.lineNotifyToken,
-        groupId: settings.lineGroupId,
-        message: msg
-      })
+    
+    const targetUrl = new URL(settings.lineNotifyUrl);
+    targetUrl.searchParams.set('token', settings.lineNotifyToken);
+    targetUrl.searchParams.set('groupId', settings.lineGroupId);
+    targetUrl.searchParams.set('message', msg);
+    
+    await fetch(targetUrl.toString(), {
+      method: 'GET',
+      mode: 'no-cors'
     });
-    console.log("LINE message sent successfully (no-cors).");
+    console.log("LINE message sent successfully (no-cors GET).");
   } catch (err) {
     console.warn("LINE Official Account push notification failed:", err);
   }
